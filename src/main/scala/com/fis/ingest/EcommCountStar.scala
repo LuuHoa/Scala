@@ -36,8 +36,8 @@ object EcommCountStar {
 
 
     try {
-      println("Read SQL Config for table_id %s from table audit.bda_tables_sumrz_conf: ",table_id, )
-      val df_confsql = spark.sql("select table_name,sql from dev_audit.bda_tables_sumrz_conf where table_id = " + table_id);
+      println("Read SQL Config for table_id %s from table audit.bda_tables_sumrz_conf: ",table_id)
+      val df_confsql = spark.sql("select table_name, sql from dev_audit.bda_tables_sumrz_conf where table_id = " + table_id);
       val row_confsql = df_confsql.collect.toList(0)
       val table_name = row_confsql.getString(0)
       val runtime_sql = row_confsql.getString(1).replace("{var1}", "'" + summarized_date + "'")
@@ -53,9 +53,9 @@ object EcommCountStar {
         case e: Throwable =>
           println(e)
           val end_time = new Timestamp(System.currentTimeMillis()).toString
-          printf("EcommCountStar::job is failed at %s", end_time)
-          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.getMessage))
+          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.getMessages.filter(_ >= ' ')))
           save_data(row_failed, spark, saved_path)
+          printf("EcommCountStar::job is failed at %s", end_time)
         //System.exit(1)
       }
     }
@@ -63,14 +63,13 @@ object EcommCountStar {
       case e: Throwable =>
         println(e)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
-        val row_failed_2 = Seq((table_id, "", summarized_date, "", application_id, null, start_time, end_time, "ERROR: not binding values yet + " + e.getMessage))
+        val row_failed_2 = Seq((table_id, "", summarized_date, "", application_id, null, start_time, end_time, "ERROR: not binding values yet + " + e.getMessages.filter(_ >= ' ')))
         save_data(row_failed_2, spark, saved_path)
         printf("EcommCountStar::job is failed at %s", end_time)
     }
     finally {
       spark.stop()
     }
-
   }
 
 
