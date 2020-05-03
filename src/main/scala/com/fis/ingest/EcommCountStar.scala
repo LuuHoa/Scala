@@ -9,12 +9,11 @@ import org.apache.spark.SparkContext
 
 object EcommCountStar {
 
-  def save_data(row_insert: List[String], spark: SparkSession, saved_path: String) : Unit =
+  def save_data(row_insert:  Seq[(String, String, String, String, String, String, String, String, String)] , spark: SparkSession, saved_path: String) : Unit =
     {
       import spark.implicits._
-      //val rdd = spark.sparkContext.parallelize(row_insert)
+      val rdd = spark.sparkContext.parallelize(row_insert)
       var data = row_insert.toDF("table_id", "table_name", "summarized_date", "runtime_sql", "application_id", "count", "start_time", "end_time","log")
-      //var data = spark.sqlContext.createDataFrame(row_insert).toDF("table_id", "table_name", "summarized_date", "runtime_sql", "application_id", "count", "start_time", "end_time","log")
       data.show()
       data.write.options(Map("delimiter" -> "\u0007")).mode(SaveMode.Append).csv(saved_path)
     }
@@ -57,11 +56,11 @@ try  {
       val runtime_sql = row_confsql.getString(1).replace("{var1}", "'"+ summarized_date +"'")
       try {
         val df_count = spark.sql(runtime_sql)
-
-        val count = df_count.collect.toList(0).getString(0)
+         
+        val cnt = if (df_count.head(1).length == 0) "0" else df_count.collect.toList(0).getString(0)
+        
         val end_time = new Timestamp(System.currentTimeMillis()).toString
-        //val row_done = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, count, start_time, end_time, "DONE"))
-        val row_done = List(table_id, table_name, summarized_date, runtime_sql, application_id, count, start_time, end_time, "DONE")
+        val row_done = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, cnt, start_time, end_time, "DONE"))
         save_data(row_done, spark, saved_path)
         printf("EcommCountStar::job is completed at %s", end_time)
       } catch {
@@ -69,22 +68,18 @@ try  {
             println(e)
               val end_time = new Timestamp(System.currentTimeMillis()).toString
               printf("EcommCountStar::job is failed at %s", end_time)
-              // val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: "+ e.getMessage))
-              //val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: "+ e.getMessage))
-              val row_failed = List(table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: "+ e.getMessage)
-
+              val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: "+ e.getMessage))
               save_data(row_failed, spark, saved_path )
-            System.exit(1)}
+              //System.exit(1)
 
 } catch {
   case e: Throwable =>
     println(e)
     val end_time = new Timestamp(System.currentTimeMillis()).toString
     printf("EcommCountStar::job is failed at %s", end_time)
-    //val row_failed = Seq((table_id, "", summarized_date, "", application_id, null, start_time, end_time, "ERROR: not binding values yet + "+ e.getMessage))
-    val row_failed = List(table_id, "", summarized_date, "", application_id, null, start_time, end_time, "ERROR: not binding values yet + "+ e.getMessage)
-
-    save_data(row_failed, spark, saved_path)
+    val row_failed_2 = Seq((table_id, "", summarized_date, "", application_id, null, start_time, end_time, "ERROR: not binding values yet + "+ e.getMessage))
+    save_data(row_failed_2, spark, saved_path)
+    
 } finally {
   spark.stop()
 }
