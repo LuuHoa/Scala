@@ -36,6 +36,7 @@ object EcommCountStar {
 
 
     try {
+      println("Read SQL Config for table_id %s from table audit.bda_tables_sumrz_conf: ",table_id, )
       val df_confsql = spark.sql("select table_name,sql from dev_audit.bda_tables_sumrz_conf where table_id = " + table_id);
       val row_confsql = df_confsql.collect.toList(0)
       val table_name = row_confsql.getString(0)
@@ -74,13 +75,13 @@ object EcommCountStar {
 
 
   def save_data(row_insert: Seq[(String, String, String, String, String, String, String, String, String)], spark: SparkSession, saved_path: String): Unit = {
-    printf("Start to save record %s", row_insert.mkString(" ~ "))
+    printf("Start to save record %s into audit.bda_tables_sumrz_data", row_insert.mkString(" ~ "))
     import spark.implicits._
     val rdd = spark.sparkContext.parallelize(row_insert)
     var data = row_insert.toDF("table_id", "table_name", "summarized_date", "runtime_sql", "application_id", "count", "start_time", "end_time", "log")
     data.show()
     data.write.options(Map("delimiter" -> "\u0007")).mode(SaveMode.Append).csv(saved_path)
-    println("Save record is completed %s")
+    println("Save record into audit.bda_tables_sumrz_data is completed.")
   }
 
 }
