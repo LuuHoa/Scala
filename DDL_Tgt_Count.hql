@@ -10,6 +10,7 @@ CREATE EXTERNAL TABLE dev_audit.bda_tables_sumrz_conf
    table_type varchar(20),
    count_ind char(1),
    summarized_date string,
+   dates_ago int,
    primary_key string,
    sql string
    
@@ -26,9 +27,9 @@ grant select on audit.bda_tables_sumrz_conf to role pdw_role;
   
 INSERT OVERWRITE table dev_audit.bda_tables_sumrz_conf 
 select * from ( 
-SELECT 'AUDIT' schema_name, 1 table_id, 'FE_PAYMENTS' table_name, 'TRAN' table_type, 'Y' count_ind, 'CREATED_DATE' summarized_date, 'PAYMENT_ID' primary_key, 'SELECT COUNT(DISTINCT PAYMENT_ID ) , TO_DATE(CREATED_DATE) FROM AUDIT.FE_PAYMENTS WHERE to_date(created_date) = {var1} and extract_date between {var1} and date_add({var1},3) group by to_date(created_date)' sql
+SELECT 'AUDIT' schema_name, 1 table_id, 'FE_PAYMENTS' table_name, 'TRAN' table_type, 'Y' count_ind, 'CREATED_DATE' summarized_date, 10 dates_ago, 'PAYMENT_ID' primary_key, 'SELECT COUNT(DISTINCT PAYMENT_ID ) , TO_DATE(CREATED_DATE) FROM AUDIT.FE_PAYMENTS WHERE to_date(created_date) = {var1} and extract_date between {var1} and date_add({var1},3) group by to_date(created_date)' sql
 UNION ALL
-SELECT 'AUDIT' schema_name, 2 table_id, 'VAP_RESPONSE_REASON_CODE_REF' table_name, 'DIM' table_type, 'Y' count_ind, NULL summarized_date, 'RESPONSE_REASON_CODE' primary_key, 'SELECT COUNT(DISTINCT RESPONSE_REASON_CODE) , {var1} FROM AUDIT.vap_response_reason_code_ref' sql
+SELECT 'AUDIT' schema_name, 2 table_id, 'VAP_RESPONSE_REASON_CODE_REF' table_name, 'DIM' table_type, 'Y' count_ind, NULL summarized_date, null dates_ago, 'RESPONSE_REASON_CODE' primary_key, 'SELECT COUNT(DISTINCT RESPONSE_REASON_CODE) , {var1} FROM AUDIT.vap_response_reason_code_ref' sql
 ) a
 
 

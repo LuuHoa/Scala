@@ -13,7 +13,7 @@ object EcommCountStar {
     printf("EcommCountStar::job is started at %s", start_time)
     if (args.length != 4) {
       println("It needs 4 parameters: tableID tableName Date savedPath")
-      return;
+      System.exit(1)
     }
 
     var table_id = args(0)
@@ -21,7 +21,7 @@ object EcommCountStar {
     val summarized_date = args(2)
     val saved_path = args(3)
 
-    printf(" for table Id %s with summarized_date %s", table_id, summarized_date)
+    printf("\n For table Id %s with summarized_date %s", table_id, summarized_date)
 
     val spark: SparkSession = SparkSession.builder()
       .appName("EcommCountStar")
@@ -54,19 +54,20 @@ object EcommCountStar {
         case e: Throwable =>
           println(e)
           val end_time = new Timestamp(System.currentTimeMillis()).toString
-          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.getMessages.filter(_ >= ' ')))
+          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.printStackTrace.toString.replaceAll("\n\\s*\\|","")))
           save_data(row_failed, spark, saved_path)
           printf("EcommCountStar::job is failed at %s", end_time)
-        //System.exit(1)
+          System.exit(1)
       }
     }
     catch {
       case e: Throwable =>
         println(e)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
-        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.getMessages.filter(_ >= ' ')))
+        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.printStackTrace.toString.replaceAll("\n\\s*\\|","")))
         save_data(row_failed_2, spark, saved_path)
         printf("EcommCountStar::job is failed at %s", end_time)
+        System.exit(1)
     }
     finally {
       spark.stop()
