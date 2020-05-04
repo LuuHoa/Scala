@@ -1,6 +1,6 @@
 set -x
 #! /bin/sh
-
+unset HADOOP_CONF_DIR
 . /tmp/Ecomm_Count_Star/Ecomm_Count_Star_Tables.conf
 
 export Rcvr_Mail_Addr="Hoa.Luu@fisglobal.com"
@@ -46,12 +46,14 @@ Proc_Submit_Each() {
     spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Main_Class} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Count} $paras  
     
     if [ $? -eq 0 ];
-        echo $paras completed
     then
+        echo $paras completed
+    else
         spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Main_Class} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Count} $paras
-        if [ $? -eq 0 ];
+        if [ $? -eq 0 ]; 
+        then
              echo $paras completed after second try
-        then 
+        else 
              echo $paras 'Failed'
              echo -e "\n"Job CountStar for  $paras Failed | mail -s "Alert:Job CountStar - $paras failed in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
         
@@ -72,14 +74,13 @@ do
     [  -z "$date_ago" ] && date_ago=0
     
     summarize_date=`date -d "$batch_dt_hive_fmt - $date_ago days" '+%Y-%m-%d'` 
-    echo $summarize_date
-    
+        
      j=$i+1
       
-      if [ $j%${Batch_Size} != 0 ];
-                Proc_Submit_Each ${tablelist[$i]} "$summarize_date" &
-      then 
-                Proc_Submit_Each ${tablelist[$i]} "$summarize_date" & wait
+      if [ $j%${Batch_Size} != 0 ]; then
+            Proc_Submit_Each ${tablelist[$i]} "$summarize_date" &
+      else 
+            Proc_Submit_Each ${tablelist[$i]} "$summarize_date" & wait
       fi
     
 
