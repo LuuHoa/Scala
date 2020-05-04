@@ -40,26 +40,25 @@ echo -e "\n"script name is ${Script_Nm}
 echo 'print in order tableid tablename saved_path to spark argument'
 var_tableId_Ls=`hdfs dfs -cat ${Conf_Hdfs_Location}* | awk -F'\a' '{print $2" "$1"."$3" "$7" ~IND_YESNO_"$5}' | grep 'IND_YESNO_Y'  | sed 's/ ~IND_YESNO_Y//g'`
 
-Submit_Each() {
-    echo $1 $2 ${Data_Hdfs_Location} start
-    #spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Class_Nm_Sprk_Ing} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Ing} $1 
+Proc_Submit_Each() {
+    echo "Submitting table_id table_name date saved_path, Spark job started with these paras" 
+    paras="$1 $2 $4 ${Data_Hdfs_Location}" 
+    spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Main_Class} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Count} $paras  
     
     if [ $? -eq 0 ];
-        echo $1 $2 ${Data_Hdfs_Location} complete
+        echo $paras completed
     then
-        #spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Class_Nm_Sprk_Ing} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Ing} $1 $2 ${Data_Hdfs_Location}
+        spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Main_Class} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Count} $paras
         if [ $? -eq 0 ];
-             echo $1 $2 ${Data_Hdfs_Location} complete after second try
+             echo $paras completed after second try
         then 
-             echo 'Failed'
-             echo -e "\n"Ecomm Count Star for $1 Failed | mail -s "Alert:Ecomm Count Star - $1 failed in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
+             echo $paras 'Failed'
+             echo -e "\n"Job CountStar for  $paras Failed | mail -s "Alert:Job CountStar - $paras failed in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
         
         fi;
     fi
 
 }
-
-
 
 SAVEIFS=$IFS   # Save current IFS
 IFS=$'\n'      # Change IFS to new line
@@ -78,9 +77,9 @@ do
      j=$i+1
       
       if [ $j%${Batch_Size} != 0 ];
-                Submit_Each ${tablelist[$i]} $summarize_date &
+                Proc_Submit_Each ${tablelist[$i]} "$summarize_date" &
       then 
-                Submit_Each ${tablelist[$i]} $summarize_date & wait
+                Proc_Submit_Each ${tablelist[$i]} "$summarize_date" & wait
       fi
     
 
