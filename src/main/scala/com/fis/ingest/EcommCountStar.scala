@@ -11,15 +11,15 @@ object EcommCountStar {
 
     val start_time = new Timestamp(System.currentTimeMillis()).toString
     printf("EcommCountStar::job is started at %s", start_time)
-    if (args.length != 5) {
-      println("It needs 5 parameters: tableID tableName Ago Date savedPath")
+    if (args.length != 4) {
+      println("It needs 4 parameters: tableID tableName Date savedPath")
       System.exit(1)
     }
 
     var table_id = args(0)
     val table_name = args(1)
-    val summarized_date = args(3)
-    val saved_path = args(4)
+    val summarized_date = args(2)
+    val saved_path = args(3)
 
     printf("\n For table Id %s with summarized_date %s", table_id, summarized_date)
 
