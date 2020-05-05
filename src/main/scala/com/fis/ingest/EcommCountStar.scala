@@ -37,7 +37,7 @@ object EcommCountStar {
 
 
     try {
-      printf("\nRead the query for table_id %s %s from table audit.bda_tables_sumrz_conf: ",table_id, table_name)
+      printf("\nRead the query for table_id %s %s from table audit.bda_tables_sumrz_conf: \n",table_id, table_name)
       val df_confsql = spark.sql("select sql from dev_audit.bda_tables_sumrz_conf where table_id = " + table_id);
       val row_confsql = df_confsql.collect.toList(0)
       //val table_name = row_confsql.getString(0)
@@ -53,7 +53,7 @@ object EcommCountStar {
       }
       catch {
         case e: Exception => {
-          println(e)
+          println("Exception: "+e)
           val end_time = new Timestamp(System.currentTimeMillis()).toString
           val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.printStackTrace.toString.replaceAll("\n\\s*\\|"," ").substring(1000)))
           save_data(row_failed, spark, saved_path)
@@ -63,7 +63,7 @@ object EcommCountStar {
     }
     catch {
       case e: Exception => {
-        println(e)
+        println("Exception : "+e)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
         val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.getStackTrace.mkString(" ").substring(1000)))
         save_data(row_failed_2, spark, saved_path)
