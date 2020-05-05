@@ -67,7 +67,8 @@ IFS=$'\n'      # Change IFS to new line
 tablelist=($var_tableId_Ls) # split to array
 IFS=$SAVEIFS   # Restore IFS
 echo $tablelist
-for (( i=0; i<${#tablelist[@]}; i++ ))
+#for (( i=0; i<${#tablelist[@]}; i++ ))
+for (( i=0; i< 7; i++ ))
 do
     echo "$i: ${tablelist[$i]}"
     date_ago=`echo ${tablelist[$i]} | awk -F' ' '{ if ($3 ~ /^[0-9]+$/ ) print $3}'`
@@ -75,12 +76,13 @@ do
     
     summarize_date=`date -d "$batch_dt_hive_fmt - $date_ago days" '+%Y-%m-%d'` 
         
-     j=$i+1
+     j=$((i+1))
       
-      if [ $j%${Batch_Size} != 0 ]; then
+      if [ $((j%Batch_Size)) -ne 0 ]; then
             Proc_Submit_Each ${tablelist[$i]} "$summarize_date" &
       else 
-            Proc_Submit_Each ${tablelist[$i]} "$summarize_date" & wait
+            echo "It should be wait here"
+            Proc_Submit_Each ${tablelist[$i]} "$summarize_date" wait 
       fi
     
 
