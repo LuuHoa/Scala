@@ -42,6 +42,7 @@ object EcommCountStar {
       val row_confsql = df_confsql.collect.toList(0)
       //val table_name = row_confsql.getString(0)
       val runtime_sql = row_confsql.getString(0).replace("{var1}", "'" + summarized_date + "'")
+      println("runtime_sql: "+runtime_sql)
       try {
         val df_count = spark.sql(runtime_sql)
         val cnt = if (df_count.head(1).length == 0) "0" else ""+df_count.collect.toList(0).getLong(0)
@@ -54,7 +55,7 @@ object EcommCountStar {
         case e: Exception => {
           println(e)
           val end_time = new Timestamp(System.currentTimeMillis()).toString
-          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.printStackTrace.toString.replaceAll("\n\\s*\\|"," ").substring(200)))
+          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.printStackTrace.toString.replaceAll("\n\\s*\\|"," ").substring(1000)))
           save_data(row_failed, spark, saved_path)
           printf("\nEcommCountStar::job is failed in inner try at %s", end_time)
           System.exit(1) }
@@ -64,7 +65,7 @@ object EcommCountStar {
       case e: Exception => {
         println(e)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
-        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.getStackTrace.mkString(" ").substring(200)))
+        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.getStackTrace.mkString(" ").substring(1000)))
         save_data(row_failed_2, spark, saved_path)
         printf("\nEcommCountStar::job is failed in outer try at %s", end_time)
         System.exit(1) }
