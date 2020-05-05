@@ -17,11 +17,11 @@ object EcommCountStar {
     }
 
     var table_id = args(0)
-    val table_name = args(1)
-    val summarized_date = args(2)
-    val saved_path = args(3)
+    var table_name = args(1)
+    var summarized_date = args(2)
+    var saved_path = args(3)
 
-    printf("\n For table Id %s with summarized_date %s", table_id, summarized_date)
+    printf("\nFor table Id %s %s with summarized_date %s", table_id, table_name, summarized_date)
 
     val spark: SparkSession = SparkSession.builder()
       .appName("EcommCountStar")
@@ -37,37 +37,37 @@ object EcommCountStar {
 
 
     try {
-      println("Read SQL Config for table_id %s from table audit.bda_tables_sumrz_conf: ",table_id)
+      printf("\nRead the query for table_id %s %s from table audit.bda_tables_sumrz_conf: ",table_id, table_name)
       val df_confsql = spark.sql("select sql from dev_audit.bda_tables_sumrz_conf where table_id = " + table_id);
       val row_confsql = df_confsql.collect.toList(0)
       //val table_name = row_confsql.getString(0)
       val runtime_sql = row_confsql.getString(0).replace("{var1}", "'" + summarized_date + "'")
       try {
         val df_count = spark.sql(runtime_sql)
-        val cnt = if (df_count.head(1).length == 0) "0" else df_count.collect.toList(0).getString(0)
+        val cnt = if (df_count.head(1).length == 0) "0" else ""+df_count.collect.toList(0).getLong(0)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
         val row_done = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, cnt, start_time, end_time, "DONE"))
         save_data(row_done, spark, saved_path)
-        printf("EcommCountStar::job is completed at %s", end_time)
+        printf("\nEcommCountStar::job is completed at %s", end_time)
       }
       catch {
-        case e: Throwable =>
-          println(e)
+        case e: Exception => {
+          println("Exception: $e")
           val end_time = new Timestamp(System.currentTimeMillis()).toString
           val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.printStackTrace.toString.replaceAll("\n\\s*\\|","")))
           save_data(row_failed, spark, saved_path)
-          printf("EcommCountStar::job is failed at %s", end_time)
-          System.exit(1)
+          printf("\nEcommCountStar::job is failed at %s", end_time)
+          System.exit(1) }
       }
     }
     catch {
-      case e: Throwable =>
+      case e: Exception => {
         println(e)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
-        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.printStackTrace.toString.replaceAll("\n\\s*\\|","")))
+        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.getStackTrace.mkString("\n")))
         save_data(row_failed_2, spark, saved_path)
-        printf("EcommCountStar::job is failed at %s", end_time)
-        System.exit(1)
+        printf("\nEcommCountStar::job is failed at %s", end_time)
+        System.exit(1) }
     }
     finally {
       spark.stop()
