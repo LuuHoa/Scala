@@ -1,6 +1,8 @@
 package com.fis.ingest
 
 import java.sql.Timestamp
+
+import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.{Row, SQLContext, SaveMode, SparkSession, _}
 import org.apache.spark.SparkContext
 
@@ -55,7 +57,7 @@ object EcommCountStar {
         case e: Exception => {
           println("Exception: "+e)
           val end_time = new Timestamp(System.currentTimeMillis()).toString
-          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + e.printStackTrace.toString.replaceAll("\n\\s*\\|"," ").substring(1000)))
+          val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + StringUtils.left(e.printStackTrace.toString.replaceAll("\n\\s*\\|"," "),1000)))
           save_data(row_failed, spark, saved_path)
           printf("\nEcommCountStar::job is failed in inner try at %s", end_time)
           System.exit(1) }
@@ -65,7 +67,7 @@ object EcommCountStar {
       case e: Exception => {
         println("Exception : "+e)
         val end_time = new Timestamp(System.currentTimeMillis()).toString
-        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + e.getStackTrace.mkString(" ").substring(1000)))
+        val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + StringUtils.left(e.printStackTrace.toString.replaceAll("\n\\s*\\|"," "),1000)))
         save_data(row_failed_2, spark, saved_path)
         printf("\nEcommCountStar::job is failed in outer try at %s", end_time)
         System.exit(1) }
