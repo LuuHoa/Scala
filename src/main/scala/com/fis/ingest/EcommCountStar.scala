@@ -29,7 +29,7 @@ object EcommCountStar {
       .appName("EcommCountStar")
       .config("spark.debug.maxToStringFields", 100)
       .config("spark.scheduler.mode", "FAIR")
-      .config("spark.sql.hive.verifyPartitionPath", "false")
+      .config("spark.sql.hive.verifyPartitionPath", "true")
       .enableHiveSupport()
       .getOrCreate()
 
