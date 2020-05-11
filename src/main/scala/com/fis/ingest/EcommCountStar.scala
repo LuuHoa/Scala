@@ -60,7 +60,8 @@ object EcommCountStar {
           val row_failed = Seq((table_id, table_name, summarized_date, runtime_sql, application_id, null, start_time, end_time, "ERROR: " + StringUtils.left(e.printStackTrace.toString.replaceAll("\n\\s*\\|"," "),1000)))
           save_data(row_failed, spark, saved_path)
           printf("\nEcommCountStar::job is failed in inner try at %s", end_time)
-          System.exit(1) }
+        //  System.exit(1)
+        }
       }
     }
     catch {
@@ -70,7 +71,8 @@ object EcommCountStar {
         val row_failed_2 = Seq((table_id, table_name, summarized_date, null, application_id, null, start_time, end_time, "ERROR: not binding value sql yet + " + StringUtils.left(e.printStackTrace.toString.replaceAll("\n\\s*\\|"," "),1000)))
         save_data(row_failed_2, spark, saved_path)
         printf("\nEcommCountStar::job is failed in outer try at %s", end_time)
-        System.exit(1) }
+        //System.exit(1)
+         }
     }
     finally {
       spark.stop()
