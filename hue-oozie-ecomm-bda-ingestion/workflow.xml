@@ -1,0 +1,52 @@
+<workflow-app name="ECOMM_BDA_ING" xmlns="uri:oozie:workflow:0.5">
+    <global>
+        <job-xml>/scripts/config/resource_pool.xml</job-xml>
+    </global>
+    <start to="email-cabf"/>
+    <kill name="Kill">
+        <message>Action failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+
+    <action name="email-cabf">
+        <email xmlns="uri:oozie:email-action:0.2">
+            <to>suman.pothuri@worldpay.com</to>
+            <subject>BDA1- Ecomm BDA ingestion workflow start</subject>
+            <body> BDA1- Ecomm BDA ingestion workflow start</body>
+            <content_type>text/plain</content_type>        
+    </email>
+    <ok to="shell-39b4"/>
+        <error to="email-a671"/>
+
+    </action>
+    <action name="shell-39b4">
+        <shell xmlns="uri:oozie:shell-action:0.1">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <exec>/scripts/workflows/hue-oozie-ecomm-bda-ingestion/Ecomm_Ing_Mstr_Trigger.sh</exec>
+	<file>/scripts/workflows/hue-oozie-ecomm-bda-ingestion/Ecomm_Ing_Mstr_Trigger.sh#Ecomm_Ing_Mstr_Trigger.sh</file>
+              <capture-output/>
+        </shell>
+        <ok to="email-ed71"/>
+        <error to="email-a671"/>
+    </action>
+    <action name="email-ed71">
+        <email xmlns="uri:oozie:email-action:0.1">
+            <to>suman.pothuri@worldpay.com</to>
+            <subject>BDA1- Ecomm BDA Ingestion job has run successfully</subject>
+            <body>BDA1- Ecomm BDA Ingestion job has run successfully</body>
+        </email>
+        <ok to="End"/>
+        <error to="Kill"/>
+    </action>
+    <action name="email-a671">
+        <email xmlns="uri:oozie:email-action:0.2">
+            <to>suman.pothuri@worldpay.com</to>
+            <subject>Error: BDA1- Ecomm BDA hdfs Ingestion job failed</subject>
+            <body>Error: BDA1- Ecomm BDA Ingestion job has failed</body>
+	    <content_type>text/plain</content_type>    
+    </email>
+        <ok to="Kill"/>
+        <error to="Kill"/>
+    </action>
+    <end name="End"/>
+</workflow-app>

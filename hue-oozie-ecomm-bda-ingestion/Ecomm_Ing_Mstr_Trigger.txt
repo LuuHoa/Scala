@@ -1,0 +1,37 @@
+#!/bin/sh
+ssh s1p.abda_ingest@bda1node05 <<HERE
+
+rm -r /tmp/Ecomm_Dynamic_Ing
+mkdir -p /tmp/Ecomm_Dynamic_Ing
+mkdir -p /tmp/Ecomm_Dynamic_Ing/tmp
+mkdir -p /tmp/Ecomm_Dynamic_Ing/config
+mkdir -p /tmp/Ecomm_Dynamic_Ing/log
+mkdir -p /tmp/Ecomm_Dynamic_Ing/shellscripts
+
+
+hdfs dfs -get /tmp/BDAtmp/logs/ecomm/tmp/Mstr_Lst_Src_TBL_NM.txt /tmp/Ecomm_Dynamic_Ing/tmp/
+hdfs dfs -get /tmp/BDAtmp/logs/ecomm/tmp/Ecomm_Src_Static_Dtls.txt /tmp/Ecomm_Dynamic_Ing/tmp/
+hdfs dfs -get /scripts/config/Ecomm_BDA_Spark_Ing.conf /tmp/Ecomm_Dynamic_Ing/tmp/
+
+hdfs dfs -get  /scripts/shellscripts/Ecomm_Ing_Mstr.sh /tmp/Ecomm_Dynamic_Ing/shellscripts/
+hdfs dfs -get  /scripts/shellscripts/spark_submit.sh /tmp/Ecomm_Dynamic_Ing/shellscripts/
+hdfs dfs -get  /scripts/shellscripts/ingest_app_env.txt /tmp/Ecomm_Dynamic_Ing/tmp/
+sh /tmp/Ecomm_Dynamic_Ing/shellscripts/Ecomm_Ing_Mstr.sh
+
+if [ $? -eq 0 ]
+
+then
+
+echo "Dynamic Ingestion Sucessful through hdfs "
+
+else
+
+
+echo "Dynamic Ingestion Failed through hdfs "
+
+fi
+rm -r /tmp/Ecomm_Dynamic_Ing
+HERE
+
+
+
