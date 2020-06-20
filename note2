@@ -1,0 +1,300 @@
+/etc/hadoop/conf.cloudera.yarn
+/bda1gwnas/PlatformTempSpace/reprocess_config
+edge
+
+
+scp -r /home/biprod/risk_data/extract_date=2017-02-06/ ecommerce@slflokydlbdae04.infoftps.com:/app/encrypted/ecommerce/bk/
+
+-------hive---------------
+ssh ecommerce@slflokydlbdae04.infoftps.com <<HERE
+export HADOOP_HOME=/opt/cloudera/parcels/CDH/lib/hadoop
+unset HADOOP_LIBEXEC_DIR
+hive -e "msck repair table lpdh.fe_payments; msck repair table lpdh.vap_payments_additional_data;"
+rm /tmp/ecommerce/hive.log
+HERE
+
+
+-------------spark---------
+
+ssh ecommerce@slflokydlbdae04.infoftps.com <<HERE
+
+
+hdfs dfs -mkdir /data/raw/litle/vap/cbk_cases/created_year=2019/created_month=7
+hdfs dfs -mv /data/raw/litle/vap/cbk_cases/extract_date=2020-07-01/cbk_cases_2020-07-01.txt /data/raw/litle/vap/cbk_cases/created_year=2019/created_month=7/
+export HADOOP_HOME=/opt/cloudera/parcels/CDH/lib/hadoop
+unset HADOOP_LIBEXEC_DIR
+hive -e "set hive.msck.path.validation=ignore; msck repair table lpdh.cbk_cases;"
+
+HERE
+
+----------------------------------
+
+ssh ecommerce@slflokydlbdae04.infoftps.com <<'HERE'
+
+export PYSPARK_DRIVER_PYTHON=/opt/cloudera/parcels/Anaconda/bin/jupyter
+export PYSPARK_DRIVER_PYTHON_OPTS="notebook --NotebookApp.ip='*'"
+export PYSPARK_PYTHON=/opt/cloudera/parcels/Anaconda/bin/python
+export PATH=/opt/cloudera/parcels/Anaconda/bin:$PATH
+pyspark &
+pid=$!
+sleep 30
+kill -9 $pid
+HERE
+
+
+----------------
+
+python -m webbrowser "http://10.104.26.70:8880/?token=e1db9997e16fd73624a6d0b5b14e51df52ce8c624f4cd7ea"
+
+http://10.104.26.25:8888/tree#
+
+
+--Ozzie
+node 10 la node Workflow o moi truong dev_ecomm
+node 27 la node Workflow o moi truong prod
+
+cd /oozie_work_flows/
+mkdir hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej
+cd hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej
+mkdir workflow
+vi workflow.xml
+vi job.properties
+vi Ecomm_etl_rpt_act_funds_transfers_noc_rej.sh
+[s1p.abda_ingest@bda6node10 workflow]$ chmod 755 *
+[s1p.abda_ingest@bda6node10 workflow]$ ls -lrt
+hdfs dfs -mkdir /user/hue/oozie/workspaces/hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej
+[s1p.abda_ingest@bda6node10 workflow]$ hdfs dfs -put * /user/hue/oozie/workspaces/hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej/
+hdfs dfs -ls /user/hue/oozie/workspaces/hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej
+hdfs dfs -chmod 755 /user/hue/oozie/workspaces/hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej/sao_star ay
+
+[s1p.abda_ingest@bda6node10 workflow]$ vi Ecomm_etl_rpt_act_funds_transfers_noc_rej.sh
+[s1p.abda_ingest@bda6node10 workflow]$ pdw
+-bash: pdw: command not found
+[s1p.abda_ingest@bda6node10 workflow]$ pwd
+/oozie_work_flows/hue-oozie-ecomm-etl-rpt-act-funds-transfers-noc-rej/workflow
+[s1p.abda_ingest@bda6node10 workflow]$ oozie job -oozie https://bda6node10.infoftps.com:11443/oozie -config
+job: 0000021-190712030336174-oozie-oozi-W
+[s1p.abda_ingest@bda6node10 workflow]$ oozie job -oozie https://bda6node10.infoftps.com:11443/oozie -start
+[s1p.abda_ingest@bda6node10 workflow]$ ls
+
+
+oozie job --oozie http://your_host:11000/oozie -config **/job.properties** -run
+
+oozie job -oozie https://bda6node10.infoftps.com:11443/oozie -config /scripts/workflows/hue-oozie-ecomm-etl-rpt-fe-tmx-txn-summary/job.properties -run
+oozie job -oozie https://bda6node10.infoftps.com:11443/oozie -config /scripts/workflows/hue-oozie-ecomm-etl-rpt-fe-tmx-txn-summary/job.properties -run
+
+oozie job -oozie https://bda6node10.infoftps.com:11443/oozie -config job.properties -run
+
+mapred job  -kill job_1568358829893_8981
+
+https://bda6node10:8888/jobbrowser/jobs/job_1567149192967_6232
+
+
+---main spark
+package com.worldpay.spark
+
+
+import org.apache.spark.sql.{SaveMode, SparkSession}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{udf, _}
+import sys.process._
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+object ecommBDAIngst {
+
+  def reformat_date(time_stamp1: String): String = {
+    val time_stamp = Option(time_stamp1).getOrElse(return " ")
+    val time_stamp_lng = time_stamp.length()
+    if(time_stamp == null && time_stamp.isEmpty ) {
+      val a = " "
+      a
+    }else{
+      if (time_stamp_lng == 10) {
+        if (time_stamp(10) == ':') {
+          val b = time_stamp.substring(0, 10) + " " + time_stamp.substring(11)
+          b.concat(" 00:00:00.000000")
+        }
+        else {
+          time_stamp.concat(" 00:00:00.000000")
+        }
+      } else if (time_stamp_lng == 19) {
+        if (time_stamp(10) == ':') {
+          val b = time_stamp.substring(0, 10) + " " + time_stamp.substring(11)
+          b.concat(".000000")
+        }
+        else {
+          time_stamp.concat(".000000")
+        }
+      } else if (time_stamp_lng == 26) {
+        if (time_stamp(10) == ':') {
+          val b = time_stamp.substring(0, 10) + " " + time_stamp.substring(11)
+          b
+        }
+        else {
+          time_stamp
+        }
+
+      } else {
+        val b = " "
+        b
+      }
+    }
+
+  }
+
+
+
+  def main(args: Array[String]) {
+
+    val inputPath = args(0)
+    var Exitcode = 0
+
+    val spark = SparkSession
+      .builder()
+      .appName("bdaSparkIngestion")
+      .config("spark.sql.warehouse.dir", "/tmp")
+      .config("spark.hadoop.validateOutputSpecs", "false")
+      .config("spark.debug.maxToStringFields", 100)
+      .config("spark.scheduler.mode", "FAIR")
+      .enableHiveSupport()
+      .getOrCreate()
+
+    spark.sparkContext.setLogLevel("INFO")
+
+
+    try {
+
+      val job_input = spark.sparkContext.textFile(inputPath)
+
+      val job_properties = job_input.collect().toList.flatMap(x => x.split('|')).grouped(2).collect { case List(k, v) => k -> v }.toMap
+
+      val TIME_COLS_ARRAY = job_properties("TIME_COLS").split(",")
+      val TABLE_TYPE=job_properties("table_type")
+
+      val formatting = udf(reformat_date _)
+
+      println("Processing source file  started")
+
+      var srcDF = spark.read
+        .options(Map("delimiter" -> "\u0007", "ignoreLeadingWhiteSpace" -> "True", "ignoreTrailingWhiteSpace" -> "True", "multiline" -> job_properties("MVAL"), "quote" -> "","escape" -> ""))
+        .csv((job_properties("SRC_FILE_PATH") + "/" + job_properties("SRC_FILE_NM")))
+
+      val sourceCount = srcDF.count()
+
+      for (i <- TIME_COLS_ARRAY) {
+        var tempDF = srcDF.withColumn(i, formatting(col(i)))
+        srcDF = tempDF
+      }
+      val dedupKey=job_properties("Dedup_Key").split(",").toSeq.map(x => col(x.trim))
+      val dedupOrderKey=job_properties("Dedup_order_Key").split(",").toSeq.map(x => col(x.trim).desc)
+
+      import spark.sqlContext.implicits._
+      val dataNoDupDF = srcDF
+        .withColumn("PmtId_rownum", row_number()
+          .over(Window
+            .partitionBy(dedupKey:_*)
+            .orderBy(dedupOrderKey:_*)
+          )
+        )
+        .filter($"PmtId_rownum" === 1)
+        .drop("PmtId_rownum")
+
+      val dedupCount=dataNoDupDF.count()
+
+      val reportData = Seq((job_properties("SRC_FILE_NM"),dedupCount,sourceCount)).toDF()
+
+      val coalesceCount = (dedupCount/job_properties("PART_CAL_VAL").toLong +1).toInt
+
+      println("Here are count values ")
+      println("sourceCount: "+ sourceCount)
+      println("dedupCount: "+ dedupCount)
+      println("PART_CAL_VAL: "+ job_properties("PART_CAL_VAL"))
+      println("coalesceCount: "+ coalesceCount)
+
+
+
+      if (job_properties("TAR_FILE_NM").split("/")(0) == "vap_merchants") {
+        dataNoDupDF.createOrReplaceTempView("tmp")
+
+        spark.sql("Select _c0, _c1, _c2, _c3, _c4, _c5, _c6, _c7, _c8, _c9, _c10, _c11, _c12, _c13, _c14, _c15, _c16, _c17, _c18, " +
+          "CASE WHEN LENGTH(TRIM(_c19))=0 THEN REGEXP_REPLACE(SHA2(CONCAT('000000000','00000'),256), '^0+', '') WHEN LENGTH(TRIM(_c19))=1 " +
+          "THEN REGEXP_REPLACE(SHA2(CONCAT(TRIM(_c19),'ABCDE'),256), '^0+', '') ELSE REGEXP_REPLACE(SHA2(CONCAT(TRIM(_c19),SUBSTRING(TRIM(_c19),1,5)),256), '^0+', '') END _c19, " +
+          "_c20, _c21, _c22, _c23, _c24, _c25, _c26, _c27, _c28, _c29, _c30, _c31, _c32, _c33, _c34, _c35, _c36, " +
+          "_c37, _c38, _c39, _c40, _c41, _c42, _c43, _c44, _c45, _c46 from tmp").coalesce(1).write.options(Map
+        ("delimiter" -> "\u0007","emptyValue" -> "","quote"->"")).mode(SaveMode.Overwrite).csv((job_properties("TAR_FILE_PATH") + "/"
+          + job_properties("TAR_FILE_NM")))
+
+      } else {
+        dataNoDupDF.coalesce(coalesceCount).write.options(Map("delimiter" -> "\u0007","emptyValue" -> "","quote"->"")).mode(SaveMode.Overwrite).csv((job_properties("TAR_FILE_PATH") + "/" + job_properties("TAR_FILE_NM")))
+      }
+      reportData.write.option("header","false").mode(SaveMode.Overwrite).csv((job_properties("REPORT_FILE_PATH") + "/" + job_properties("REPORT_FILE_NM")))
+
+      println("Processing source file completed")
+      println("Info : Identifying Dimensional Tables ")
+      if (TABLE_TYPE == "Dimensional")
+      {
+        println("Info : Source is a Dimensional Table..Starting Ingestion ")
+
+        val base_tb_nm = job_properties("Ecomm_BDA_Tgt_Schema") + "." + job_properties("TBL_NAME")
+        val sn_tb_nm = job_properties("Ecomm_BDA_Tgt_Schema") + "." + job_properties("TAR_SNPSHT_FILE_NM")
+
+        println("Query to add partition to meta store: ALTER TABLE " + base_tb_nm + " ADD IF NOT EXISTS PARTITION (extract_date='"+ job_properties("extract_dt") +"')" )
+        spark.sql("ALTER TABLE " + base_tb_nm + " ADD IF NOT EXISTS PARTITION (extract_date='"+ job_properties("extract_dt") +"')")
+        println("Query to get max extract date from snapshot table: select max(extract_date) from " + sn_tb_nm)
+
+        val max_run_date =  spark.sql("select NVL(max(extract_date),'1900-01-01') from " + sn_tb_nm  ).first()(0)
+        val sndedupKey = job_properties("Dedup_Key_Name")
+        val snpsht_query = "with tmp as (select t1.* from "+ sn_tb_nm +" t1 where t1.extract_date = '" + max_run_date + "' union all select t2.* from " + base_tb_nm +" t2 where t2.extract_date = '" + job_properties("extract_dt") + "') select * from (select tmp.*, row_number() over (partition by "+ sndedupKey +" order by extract_date desc) row_num from tmp ) res where row_num = 1"
+
+        //        val snpsht_query = "select * from (select tmp.*, row_number() over (partition by "+ sndedupKey +" order by " +"extract_date desc) row_num from " +base_tb_nm+" tmp ) res where row_num = 1"
+
+        println("sn query: " + snpsht_query)
+        import spark.sqlContext.implicits._
+        val Dimensional_tbl = spark.sql(snpsht_query)
+        Dimensional_tbl.drop("extract_date","row_num")
+        val snCount=Dimensional_tbl.count()
+        val partCount = (snCount/job_properties("PART_CAL_VAL").toLong +1).toInt
+        val ext_dt =LocalDate.parse(job_properties("extract_dt"), DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val snp_max_dt =LocalDate.parse(max_run_date.toString, DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val temTbl = job_properties("TAR_SNPSHT_FILE_NM")+"_tmp/extract_dt="+ job_properties("run_dt")
+        val run_dt = LocalDate.parse(job_properties("run_dt").toString, DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+        if(ext_dt.compareTo(snp_max_dt) <= 0 && snp_max_dt.compareTo(run_dt) == 0){
+          println("Now store into temporary table: "+ temTbl)
+          Dimensional_tbl.coalesce(partCount).write.mode(SaveMode.Overwrite).parquet(job_properties("TAR_FILE_PATH") +temTbl)
+
+
+          "hadoop fs -rm -r " + job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM")+ "/extract_date=" + job_properties("run_dt") !
+
+          "hadoop fs -mkdir " +job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM") + "/extract_date=" + job_properties("run_dt") !
+
+          "hadoop fs -mv " + job_properties("TAR_FILE_PATH") +temTbl+"/* " + job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM") + "/extract_date=" + job_properties("run_dt") !
+
+          "hadoop fs -rm -r " + job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM") + "_tmp" !
+        }
+        else{
+          Dimensional_tbl.coalesce(partCount).write.mode(SaveMode.Overwrite).parquet((job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM")+ "/extract_date=" + job_properties("run_dt")))
+        }
+
+        //        Dimensional_tbl.coalesce(partCount).write.mode(SaveMode.Overwrite).parquet((job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM")+ "/extract_date=" + job_properties("run_dt")))
+
+        println((job_properties("TAR_FILE_PATH") + job_properties("TAR_SNPSHT_FILE_NM")+ " with extract_date=" +job_properties("extract_dt")+ "into extract_date=" + job_properties("run_dt")))
+        val add_pt_st1 = "ALTER TABLE " + sn_tb_nm + " ADD IF NOT EXISTS PARTITION (extract_date='"+ job_properties("run_dt") +"')"
+        println(add_pt_st1)
+        spark.sql(add_pt_st1)
+        println("Info : Source is a Dimensional Table..Finish Ingestion ")
+      }
+    } catch {
+      case e: Throwable =>
+        println(e)
+        System.exit(1)
+        Exitcode = 1
+
+    } finally {
+      spark.stop()
+    }
+  }
+}
+
+
