@@ -1,0 +1,1025 @@
+Ecomm_Ing_Mstr.sh
+set -x
+#! /bin/sh
+
+#Script Name    : Ecomm_Ing_Mstr.sh
+#Description    : This script ingests source files from BDA ecomm source path to BDA target path.
+#                 This script handles below
+#                 1. Polling for new ecomm source files
+#                 2. Prevalidation to identify the files which has schema, stats & data files with data
+#                 3. Generate properties file for each source
+#                 4. Loop through the source files to process parallely the ecomm sources
+#                       a. Log the initiation
+#                       b. Process trasformations using spark
+#                       c. Log the completion/failure
+#                       d. Count reconciliation
+#                       e. Alert generation on spark transformation or count reconciliation failures
+#Owner          : eComm DS Dev Team
+#Date Created   : 2019-02-05
+#Usage          : sh Ecomm_Ing_Mstr.sh
+#
+#==========================================  CHANGES START  ==================================================
+#
+#SL_No  Change_Ref#     Changed_By      Change_Date     Change_Comments
+#=====  ===========     ==========      ===========     ===============
+#
+#
+#
+#==========================================  CHANGES END  ====================================================
+
+. /tmp/Ecomm_Dynamic_Ing/tmp/Ecomm_BDA_Spark_Ing.conf
+
+Ecomm_BDA_Tgt_Schema="audit"
+export Rcvr_Mail_Addr="sushanth.chindam@fisglobal.com,Hoa.Luu@fisglobal.com, Janardhan.Koushik.Tadakamalla@fisglobal.com,chandra.lekkala@fisglobal.com"
+
+
+
+
+export Prcs_Strtd_TS=$(date '+%Y%m%d%H%M%S')
+export Prcs_Strtd_TS_Fmt=`date +%Y-%m-%d_%H-%M-%S_%N`
+
+export Btch_Dt=$(date '+%Y%m%d')        # Date on which the master script batch started
+export batch_dt_hive_fmt=$(date +%Y-%m-%d)  # Date on which the master script batch started hive format
+export Src_Data_FL_Exist_Ind=0          # Indicator to identify the availability of source files
+export Delta_TS_Diff_Sec=0              # Capture the difference of time in seconds from start of script till a particular point
+
+
+export Log_File=${Script_Nm}_${Prcs_Strtd_TS_Fmt}.log
+export Err_Log_File=${Script_Nm}_Error_${Prcs_Strtd_TS_Fmt}.log
+
+exec 1> ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} 2> ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File}
+
+echo -e BDA Ingestion process Script $0 started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+echo -e "\n"Log file name for script $0 execution is ${BDA_Nd_Ecomm_Log_Loc}${Log_File}
+echo Error Log file name for script $0 execution is ${BDA_Nd_Ecomm_Log_Loc}${Err_Log_File}
+
+echo -e "\n"Run window is ${Job_Run_Intrvl}
+echo Sleep Interval before checking the existence of file/s is ${Job_Sleep_Intrvl} seconds
+echo Batch Size to run parallely the spark submit process/s is ${Batch_Size}
+echo source system name is ${Src_Sys}
+echo Agent used to invoke the job is ${Job_Invoking_Agent}
+echo Date on which the master script batch started is ${Btch_Dt}
+echo application directory is ${App_Dir}
+echo Spark Ingestion Pool used for spark submit process/s is ${Spark_Sbmt_Ing_Pool}
+echo Spark Number of Executors used for  spark submit process/s is ${Spark_Sbmt_Ing_Executors}
+echo Spark Number of Cores used for spark submit process/s is ${Spark_Sbmt_Ing_Cores}
+echo Spark Executor Memory used for spark submit process/s is ${Spark_Sbmt_Ing_Exec_Mem}
+echo Spark Driver Memory used for spark submit process/s is ${Spark_Sbmt_Ing_Drvr_Mem}
+echo Hive Demographics schema under which the ecomm control table exist is ${Hive_Demographics_Schema}
+echo Hive ecomm table name to store the ecomm control static details is ${Hive_Ecomm_Ctrl_Tbl}
+echo Hive Ecomm control log table name to hold dynamic logging of various ecomm sources ingestion details is ${Hive_Ecomm_Ing_Log_Tbl}
+echo Hive ETL log table name where the legacy ingestion logging takes place is ${Hive_Etl_Log_Sta_Tbl}
+echo Spark ingestion jar name is ${Jar_Nm_Sprk_Ing}
+echo Utility jar name is ${Jar_Nm_Util}
+echo Spark submit deploy mode is ${Spark_Deploy_Md}
+echo value used to calculate number of partitions while creating the target files is ${PART_CAL_VAL}
+echo source stats file name prefix is ${Pfx_Stats}
+echo source stats file name suffix is ${Sfx_Stats}
+echo source schema file name prefix is ${Pfx_Schema}
+echo source schema file name extension is ${Schema_Extn}
+
+echo -e "\n"HDFS node path is ${HDFS_Node_Loc}
+echo HDFS Ecomm BDA base location is ${HDFS_Ecomm_Base_Loc}
+echo HDFS Ecomm BDA configuration files location is ${HDFS_Ecomm_Config_Loc}
+echo HDFS Ecomm BDA jar files location is ${HDFS_Jar_Loc}
+echo HDFS Ecomm BDA landing location for source file/s is ${HDFS_Ecomm_Landing_Loc}
+echo HDFS Ecomm BDA target location is ${HDFS_Ecomm_Tgt_Loc}
+echo HDFS Ecomm BDA archival location is ${HDFS_Ecomm_Arc_Loc}
+echo HDFS Ecomm BDA legacy hive log tables location is ${HDFS_HV_Log_Loc}
+echo HDFS Ecomm BDA report location is ${HDFS_Ecomm_Rpt_Loc}
+echo HDFS Ecomm BDA control table location is ${HDFS_Ecomm_Ctrl_Tbl_Loc}
+echo HDFS Ecomm BDA control log table location is ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}
+echo Hive ecomm control table name to hold static details with schema name is ${Ecomm_Ctrl_Static_Tbl}
+echo Hive ecomm control log table name to hold logging of ecomm sources ingestion details with schema name is ${Ecomm_Ing_Log_Tbl}
+echo Hive ETL log table name to hold legacy ingestion logging details with schema name is ${Etl_Log_Sta_Tbl}
+#echo HDFS Ecomm BDA temporary location is ${HDFS_Node_Loc}${HDFS_Ecomm_Temp_Loc}
+#echo HDFS Ecomm BDA log location is ${HDFS_Node_Loc}${HDFS_Ecomm_Log_Loc}
+
+echo -e "\n"BDA node name is ${BDA_Nd_Nm}
+echo BDA node jar files location is ${BDA_Nd_Jar_Loc}
+echo BDA node shell script files location is ${BDA_Nd_Shel_Scr_Loc}
+echo BDA node config files location is ${BDA_Nd_Conf_Loc}
+echo BDA node temporary files location is ${BDA_Nd_Ecomm_Tmp_Loc}
+echo BDA node log files location is ${BDA_Nd_Ecomm_Log_Loc}
+
+echo -e "\n"script name is ${Script_Nm}
+echo BDA ingestion initial statistics file name is ${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+echo Ecomm source master static details file name is ${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm}
+echo File name to store all the ecomm source files received for current run is ${Ecomm_All_Src_FL_Nm}
+echo File name to store all the unique ecomm sources with extract dates is ${Ecomm_All_Src_FL_Nm_byExtDt}
+echo BDA spark script name which gets generated dynamically as part of execution is ${Sprk_Scrpt_Nm}
+echo File name to hold Ecomm attributes for all the sources received today is ${Ecomm_Attrib_FL_Nm}
+echo Master list of ecomm source tables to be ingested into BDA stored in the file ${Ecomm_Ing_Mstr_Tbl_Lst}
+echo BDA spark submit script name through which the actual ingestion and transformations took place is ${Sprk_Sbmt_Scrpt_Nm}
+echo oozie_url=${oozie_http_url}
+
+
+#####################Kill previous Workflows#####################################
+OOZIE_WF_IDS=`oozie jobs -oozie https://bda1node27.infoftps.com:11443/oozie -localtime -filter status=RUNNING | grep "ECOMM_BDA_ING" | sort | head -n -1 | cut -d " " -f1`
+
+if [ -z "$OOZIE_WF_IDS" ]
+then
+
+        echo "No Previous instance of the Workflow is running. Continuing with Current Execution"
+
+else
+        echo "Killing Previous instance of the Workflow/s"
+        for workflowId in `oozie jobs -oozie https://bda1node27.infoftps.com:11443/oozie -localtime -filter status=RUNNING | grep "ECOMM_BDA_ING" | sort | head -n -1 | cut -d " " -f1`
+                do
+                        echo "Killing workflow with ID:"$workflowId
+                        oozie job -oozie https://bda1node27.infoftps.com:11443/oozie -kill $workflowId
+
+   # do whatever on $i
+                done
+fi
+####################################################################################
+
+Previous_ProcessId=`ps -ef --sort=start_time | grep "Ecomm_Ing_Mstr.sh" | grep -v " grep Ecomm_Ing_Mstr.sh" | grep -v $$ | sed -e "s/\s\{1,\}/$/g" | cut -d '$' -f2`
+
+if [ -z "$Previous_ProcessId" ]
+then
+
+        echo "No Previous process Id  of the script is running. Continuing with Current Execution"
+
+else
+
+        echo "Killing Previous Process Id of the script"
+        for processId in `ps -ef --sort=start_time | grep "Ecomm_Ing_Mstr.sh" | grep -v " grep Ecomm_Ing_Mstr.sh" | grep -v $$ | sed -e "s/\s\{1,\}/$/g" | cut -d '$' -f2`
+                do
+                        echo "Killing process ID with ID:"$processId
+                        kill -9 $processId
+
+   # do whatever on $i
+                done
+fi
+
+
+
+
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+
+echo -e "\n"Temp files truncation started at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+rm ${BDA_Nd_Ecomm_Tmp_Loc}*.properties
+
+ls ${BDA_Nd_Ecomm_Tmp_Loc}*.csv | grep -v ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | xargs rm
+
+truncate -s 0 ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt} ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_Attrib_FL_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hdfs_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Partition_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_CopyHdfs_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Selected_Partition_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Rm_Partition_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_HDFS_Rm_Partition_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Rm_Partition_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Msck_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Implala_Invalidate_Nm}
+
+echo -e "\n"Temp files truncation completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+Job_Run_Intrvl_Hr=${Job_Run_Intrvl:0:2}
+Job_Run_Intrvl_Min=${Job_Run_Intrvl:3:2}
+Job_Run_Intrvl_Sec=${Job_Run_Intrvl:6:2}
+
+
+Job_Run_Intrvl_HrtoSec=`expr $Job_Run_Intrvl_Hr \* 60 \* 60`
+Job_Run_Intrvl_MintoSec=`expr $Job_Run_Intrvl_Min \* 60 `
+Job_Run_Intrvl_Secs=`expr $Job_Run_Intrvl_Sec \* 1 `
+Job_Run_Intrvl_Tot_Seconds=`expr $Job_Run_Intrvl_HrtoSec + $Job_Run_Intrvl_MintoSec + $Job_Run_Intrvl_Sec`
+
+echo -e "\n"Job Run Interval in hours equivalent to seconds is $Job_Run_Intrvl_HrtoSec seconds
+echo Job Run Interval in minutes equivalent to seconds is $Job_Run_Intrvl_MintoSec seconds
+echo Job Run Interval in seconds equivalent to seconds is $Job_Run_Intrvl_Secs seconds
+echo Job Run Interval is $Job_Run_Intrvl and Job Run Interval has $Job_Run_Intrvl_Hr hours $Job_Run_Intrvl_Min minutes and $Job_Run_Intrvl_Sec seconds
+echo Total Job Run Interval in seconds is/are $Job_Run_Intrvl_Tot_Seconds seconds$'\n'
+
+echo -e "\n"Ecomm static control table updation started at `date +%Y-%m-%d_%H-%M-%S_%N`
+hdfs dfs -copyFromLocal -f ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} ${HDFS_Ecomm_Ctrl_Tbl_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm}
+echo -e "\n"Ecomm static control table updation completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+
+
+while [ $Delta_TS_Diff_Sec -le $Job_Run_Intrvl_Tot_Seconds  ] || [ $Src_Data_FL_Exist_Ind -eq 1  ]
+do
+
+        Src_Prcs_Ind=0          # Indicator to identify are there any sources ready for ingestion
+        if [ $Src_Data_FL_Exist_Ind -ne 1 ]
+        then
+
+                echo -e "\n"BDA Ecomm source file/s search process started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                hdfs dfs -ls -R ${HDFS_Ecomm_Landing_Loc} > ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm}
+
+                cat ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | grep 'part-m*' | awk -F" " '{print $6,$7,$8}' | sort | awk -F" " '{print $3}' | awk -F"part" '{print $1}' | sort | uniq > ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt}
+
+                echo -e BDA Ecomm source file/s search process completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+        fi
+
+        echo -e BDA Ecomm source file/s prevalidation process started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+        if [ `wc -l ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt} | cut -f1 -d' '` -ne 0  ]
+        then
+
+                `hdfs dfs -rm -r ${HDFS_Ecomm_Config_Loc}*.properties`
+                truncate -s 0 ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+                truncate -s 0 ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_Attrib_FL_Nm}
+
+                echo -e "\n"Ecomm source file/s is/are available for processing"\n"
+                Iteration=1     # Represnts the current iteration
+                while read line;
+                do
+
+                        echo -e "\n"Source is $line and processing iteration $Iteration"\n"
+
+                        Src_NM=`echo $line | cut -f7 -d/`
+
+                        Src_FL_Cmpltd_Ind1=`echo $line | cut -f7 -d/`
+                        Src_FL_Cmpltd_Ind2=`echo $line | cut -f8 -d/ | cut -f2 -d=`
+
+                        rm ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+                        hadoop fs -touchZ ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}Hive_Ecomm_Ing_Log_Tbl.txt
+                        hdfs dfs -cat ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}Hive_Ecomm_Ing_Log_Tbl.txt > ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                        if [ `grep -w extract_date=$Src_FL_Cmpltd_Ind2 ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind1 | grep -w "Started" | wc -l` -ge 1 ]
+                        then
+                                if [ `grep -w extract_date=$Src_FL_Cmpltd_Ind2 ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind1  | grep -w "Completed" | wc -l` -eq 1 ]
+                                then
+                                        Src_FL_Cmpltd_Ind=1
+                                elif [ `grep -w extract_date=$Src_FL_Cmpltd_Ind2 ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind1 | grep -w "Failed" | wc -l` -ge 1 -a `grep -w $Src_FL_Cmpltd_Ind1 ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind2 | grep -w "Failed" | wc -l` -le 3 ]
+                                then
+                                        Src_FL_Cmpltd_Ind=0
+                                else
+                                        Src_FL_Cmpltd_Ind=2
+                                fi
+                        else
+                                 Src_FL_Cmpltd_Ind=0
+                        fi
+
+                        echo Source file ingested indicator for $line is $Src_FL_Cmpltd_Ind
+
+                        Src_FL_Prcs_Ind=`grep -w "$Src_NM" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_Ing_Mstr_Tbl_Lst} | wc -l`
+                        echo  Source file indicator to be processed or not for $line is $Src_FL_Prcs_Ind
+
+                        if [ $Src_FL_Cmpltd_Ind -eq 0  ] && [ $Src_FL_Prcs_Ind -eq 1  ]
+                        then
+
+                                echo Target name for source $line is $Src_NM
+                                echo Source name for source $line is "${Src_NM^^}"
+
+                                Extract_Dt=`echo $line | cut -f8 -d/ | cut -c14- `
+                                echo Extract date for source $line is $Extract_Dt
+
+                                Src_Schema_FL_NM=`grep "$line$Pfx_Schema${Src_NM^^}$Schema_Extn" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | cut -f9 -d/`
+                                echo Source Schema file name for source $line is $Src_Schema_FL_NM
+
+                                Src_Schema_FL_Cnt=`grep "$line$Pfx_Schema${Src_NM^^}$Schema_Extn" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | wc -l`
+                                echo Source Schema file count for source $line is $Src_Schema_FL_Cnt
+
+                                Src_Schema_FL_Size=`grep "$line$Pfx_Schema${Src_NM^^}$Schema_Extn" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | awk -F" " '{print $5}'`
+                                echo Source Schema file size for source $line is $Src_Schema_FL_Size
+
+                                Src_Stats_FL_NM=`grep "$line$Pfx_Stats${Src_NM^^}.*"\.stats ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | cut -f9 -d/`
+                                echo Source Stats file name for source $line is $Src_Stats_FL_NM
+
+                                Src_Stats_FL_Cnt=`grep "$line$Pfx_Stats${Src_NM^^}.*"\.stats ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | wc -l`
+                                echo Source Stats file count for source $line is $Src_Stats_FL_Cnt
+
+                                Src_Stats_FL_Size=`grep "$line$Pfx_Stats${Src_NM^^}.*"\.stats ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | awk -F" " '{print $5}'`
+                                echo Source Stats file size for source $line is $Src_Stats_FL_Size
+
+                                Src_Partm_FL_Cnt=`grep "${line}part-m*" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | wc -l`
+                                echo Source part-m file count for source $line is $Src_Partm_FL_Cnt
+
+                                Src_Partm_FL_Size1=`grep "${line}part-m*" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | awk -F" " '{print $5}'`
+                                Src_Partm_FL_Size=`echo $Src_Partm_FL_Size1 | awk '{ for(i = 1; i <= NF; i++) {sum+=$i} { print sum; } }'`
+                                echo Source part-m file size for source $line is $Src_Partm_FL_Size
+
+                                hdfs dfs -cat $line$Src_Schema_FL_NM > ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM
+
+                                Src_Schema_TS_Cols=`cat ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM | grep -nw timestamp | cut -f1 -d":" | awk  '{print ",\"_c"$1-4"\""}' | tr -d '\n' | tr -d '"' | cut -f2- -d,`
+                                echo Source schema file timestamp columns for source $line is $Src_Schema_TS_Cols
+
+#                               Src_Dedup_key1=`cat ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} | grep -w $Src_NM | cut -f4 -d'|'`
+#                               Src_Dedup_Key=`cat ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM | grep -nw $Src_Dedup_key1 | cut -f1 -d":" | awk  '{print ",\"_c"$1-4"\""}' | tr -d '\n' | tr -d '"' | cut -f2- -d,`
+#                               echo Source dedup key for source $line is $Src_Dedup_Key
+
+#                               Src_Dedup_Ordr_Key1=`cat ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} | grep -w $Src_NM | cut -f5 -d'|'`
+#                               Src_Dedup_Ordr_Key=`cat ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM | grep -nw $Src_Dedup_Ordr_Key1 | cut -f1 -d":" | awk  '{print ",\"_c"$1-4"\""}' | tr -d '\n' | tr -d '"' | cut -f2- -d,`
+#                   echo Source dedup order key for source $line is $Src_Dedup_Ordr_Key
+
+                Src_Dedup_key2=`cat ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} | grep -w $Src_NM | cut -f4 -d'|'`
+                Src_Dedup_key1=`echo ${Src_Dedup_key2} | sed 's/,/\\\|/g'`
+                Src_Dedup_Key=`cat ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM | grep -nw ${Src_Dedup_key1} | cut -f1 -d":" | awk  '{print ",\"_c"$1-4"\""}' | tr -d '\n' | tr -d '"' | cut -f2- -d,`
+                echo Source dedup key for source $line is $Src_Dedup_Key
+
+                Src_Dedup_Ordr_Key2=`cat ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} | grep -w $Src_NM | cut -f5 -d'|'`
+                Src_Dedup_Ordr_Key1=`echo ${Src_Dedup_Ordr_Key2} | sed 's/,/\\\|/g'`
+                Src_Dedup_Ordr_Key=`cat ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM | grep -nw ${Src_Dedup_Ordr_Key1} | cut -f1 -d":" | awk  '{print ",\"_c"$1-4"\""}' | tr -d '\n' | tr -d '"' | cut -f2- -d,`
+                echo Source dedup order key for source $line is $Src_Dedup_Ordr_Key
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+                                Src_Tbl_Id=`cat ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} | grep -w $Src_NM | cut -f1 -d'|'`
+                                echo Source Table id for source $line is $Src_Tbl_Id
+snp_query="with result as(SELECT *, row_number() over(partition by $Src_Dedup_key2 order by extract_date desc) as row_num FROM ${Ecomm_BDA_Tgt_Schema}.$Src_NM)select * from result where row_num=1"
+
+                        export TABLE_TYPE=`cat ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm} |grep -w $Src_NM | cut -f3 -d'|'`
+                                echo table type is for source $line is $TABLE_TYPE
+
+                                rm ${BDA_Nd_Ecomm_Tmp_Loc}$Src_Schema_FL_NM
+
+                                if [ $Src_Schema_FL_Cnt -eq 1 ] && [ $Src_Schema_FL_Size -ne 0 ] && [ $Src_Stats_FL_Cnt -eq 1 ] && [ $Src_Stats_FL_Size -ne 0 ] && [ $Src_Partm_FL_Cnt -eq 8 ] && [ $Src_Partm_FL_Size -ne 0  ]
+                                then
+
+
+                                        Src_Prcs_Ind=1
+                                        echo Source $line is ready to be processed
+                                        echo Source attributes for source $line is $line'|'$Src_Sys'|'$Src_NM'|'"${Src_NM^^}"'|'$Extract_Dt'|'$Src_Schema_FL_NM'|'$Src_Stats_FL_NM'|'$Src_Schema_TS_Cols'|'$Src_Dedup_Key'|'$Src_Dedup_Ordr_Key'|'$Src_Tbl_Id >> ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_Attrib_FL_Nm}
+
+                                        echo -e "\n"BDA Ecomm generation of property file for source $line started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                                        Prop_FL="${BDA_Nd_Ecomm_Tmp_Loc}Job_${Src_NM}_${Extract_Dt}.properties"
+                                        echo Properties file name is $Prop_FL
+                                        rm -f $Prop_FL
+                                        echo "tbl_id|$Src_Tbl_Id" >> $Prop_FL
+                                        echo "SRC_FILE_NM|$Src_NM/extract_date=$Extract_Dt/part-m*" >> $Prop_FL
+                                        echo "TAR_FILE_NM|$Src_NM/extract_date=$Extract_Dt" >> $Prop_FL
+                                        echo "REPORT_FILE_PATH|${HDFS_Ecomm_Rpt_Loc}" >> $Prop_FL
+                                        echo "REPORT_FILE_NM|$Src_NM/extract_date=$Extract_Dt" >> $Prop_FL
+                                        echo "ARC_FILE_NM|$Src_NM/extract_date=$Extract_Dt" >> $Prop_FL
+                                        echo "ARC_FILE_PATH|${HDFS_Ecomm_Arc_Loc}" >> $Prop_FL
+                                        echo "TAR_FILE_PATH|${HDFS_Ecomm_Tgt_Loc}" >> $Prop_FL
+                                        echo "SRC_FILE_PATH|${HDFS_Ecomm_Landing_Loc}" >> $Prop_FL
+                                        echo "SRC_FILE_SCHEMA_NM|$Src_Schema_FL_NM" >> $Prop_FL
+                                        echo "SRC_FILE_STATS_NM|$Src_Stats_FL_NM" >> $Prop_FL
+                                        echo "Dedup_Key|$Src_Dedup_Key" >> $Prop_FL
+                                        echo "Dedup_order_Key|$Src_Dedup_Ordr_Key" >> $Prop_FL
+                                        echo "TIME_COLS|$Src_Schema_TS_Cols" >> $Prop_FL
+                                        echo "TBL_NAME|$Src_NM" >> $Prop_FL
+                                        echo "MVAL|false" >> $Prop_FL
+                                        echo "Spark_Sbmt_Ing_Pool|$Spark_Sbmt_Ing_Pool" >> $Prop_FL
+                                        echo "Spark_Sbmt_Ing_Executors|$Spark_Sbmt_Ing_Executors" >> $Prop_FL
+                                        echo "Spark_Sbmt_Ing_Cores|$Spark_Sbmt_Ing_Cores" >> $Prop_FL
+                                        echo "Spark_Sbmt_Ing_Exec_Mem|$Spark_Sbmt_Ing_Exec_Mem" >> $Prop_FL
+                                        echo "Spark_Sbmt_Ing_Drvr_Mem|$Spark_Sbmt_Ing_Drvr_Mem" >> $Prop_FL
+                                        echo "extract_dt|$Extract_Dt" >> $Prop_FL
+                                        echo "run_dt|$batch_dt_hive_fmt" >> $Prop_FL
+                                        echo "PART_CAL_VAL|$PART_CAL_VAL" >> $Prop_FL
+                                # added on 0403
+                                        echo "table_type|$TABLE_TYPE" >> $Prop_FL
+                                        echo "TAR_SNPSHT_FILE_NM|${Src_NM}_snpsht" >> $Prop_FL
+                                        echo "snpsht_query|$snp_query" >> $Prop_FL
+
+                # added on 15Aug2019 - below two varaibales are added for snapshot tables requirement
+                                        echo "Ecomm_BDA_Tgt_Schema|$Ecomm_BDA_Tgt_Schema" >> $Prop_FL
+                                        echo "Dedup_Key_Name|$Src_Dedup_key2" >> $Prop_FL
+
+
+                                        Prop_FL1=`basename $Prop_FL`
+
+                                        hdfs dfs -copyFromLocal -f $Prop_FL $HDFS_Ecomm_Config_Loc
+
+                                        echo -e "\n"BDA Ecomm generation of property file for source $line completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                                        echo -e BDA Ecomm Dynamic generation of spark submit calls for source $line started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                                        if [ `expr $Iteration % $Batch_Size` -eq 0 ]
+                                        then
+                                                echo "sh ${BDA_Nd_Shel_Scr_Loc}${Sprk_Sbmt_Scrpt_Nm} $HDFS_Ecomm_Config_Loc$Prop_FL1 &"  >> ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+#                                                       echo "wait" >> ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+                                        else
+                                                echo "sh ${BDA_Nd_Shel_Scr_Loc}${Sprk_Sbmt_Scrpt_Nm} $HDFS_Ecomm_Config_Loc$Prop_FL1 &" >> ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+                                        fi
+
+                                        echo -e BDA Ecomm Dynamic generation of spark submit calls for source $line completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                                else
+
+                                        echo Source $line is skipped for processing as, available of zero/more stats/schema files and either one among stats, schema and data files size is zero
+                                fi
+
+                        else
+
+                                echo Source $line is skipped for processing as, source not available in Master process source list or source is already ingested
+
+                        fi
+
+                        Iteration=`expr $Iteration + 1`
+
+                done < ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt}
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+                                echo -e "\n"BDA Ecomm source file/s prevalidation process completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                if [ $Src_Prcs_Ind -eq 1 ]
+                then
+                        echo -e "\n"Attribute file contents is/are"\n"
+                        cat ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_Attrib_FL_Nm}
+
+                        spark_calls_cnt=`grep "${Sprk_Sbmt_Scrpt_Nm}" ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm} | wc -l | cut -f1 -d' '`
+                                                sed -i "0~${Batch_Size} a"'\wait\' ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+                                                if [ `expr $spark_calls_cnt % $Batch_Size` -ne 0 ]
+                        then
+                                echo "wait" >> ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+                        fi
+
+                        echo -e "\n"Below is/are the call/s for spark submit"\n"
+                        cat ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+
+                        echo -e "\n"BDA Ecomm Parallel execution of spark submit process started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                        sh ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_Scrpt_Nm}
+
+                        echo -e "\n"BDA Ecomm Parallel execution of spark submit process completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                fi
+
+        else
+
+                echo There are no Ecomm source file/s exists for processing
+                echo -e "\n"BDA Ecomm source file/s prevalidation process completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+                echo -e "\n"Waiting for source files to arrive and will be sleeping for $Job_Sleep_Intrvl seconds"\n"
+                sleep $Job_Sleep_Intrvl
+
+        fi
+
+
+        Curnt_TS=$(date '+%Y%m%d%H%M%S')
+
+        echo -e "\n"current timestamp is $Curnt_TS
+
+        datetime1=$Curnt_TS
+        datetime2=$Prcs_Strtd_TS
+
+        seconds1=$(date --date "$(echo "$datetime1" | sed -nr 's/(....)(..)(..)(..)(..)(..)/\1-\2-\3 \4:\5:\6/p')" +%s)
+        seconds2=$(date --date "$(echo "$datetime2" | sed -nr 's/(....)(..)(..)(..)(..)(..)/\1-\2-\3 \4:\5:\6/p')" +%s)
+
+
+        Delta_TS_Diff_Sec=$((seconds1 - seconds2))
+        echo "difference of Timestamps is $Delta_TS_Diff_Sec seconds"    # "45197940 seconds"
+
+        if [ $Delta_TS_Diff_Sec -ge $Job_Run_Intrvl_Tot_Seconds ]
+        then
+
+                Src_Data_FL_Exist_Ind=0
+                echo -e "\n"Checking for the availability of Ecomm source files after the run window started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                hdfs dfs -ls -R ${HDFS_Ecomm_Landing_Loc} > ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm}
+
+                cat ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | grep part-m* | awk -F" " '{print $6,$7,$8}' | sort | awk -F" " '{print $3}' | awk -F"part" '{print $1}' | sort | uniq > ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt}
+
+                echo -e Checking for the availability of Ecomm source files after the run window completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+                if [ `wc -l ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt} | cut -f1 -d' '` -ne 0  ]
+                then
+
+                        while read line
+                        do
+
+                                Src_NM=`echo $line | cut -f7 -d/`
+
+                                Src_FL_Cmpltd_Ind1=`echo $line | cut -f7 -d/`
+                                Src_FL_Cmpltd_Ind2=`echo $line | cut -f8 -d/ | cut -f2 -d=`
+
+                                rm ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+                                hdfs dfs -cat ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}* > ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                                if [ `grep -w $Btch_Dt ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind1 | grep -w $Src_FL_Cmpltd_Ind2 | grep -w "Started" | wc -l` -ge 1 ]
+                                then
+                                        if [ `grep -w $Btch_Dt ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind1 | grep -w $Src_FL_Cmpltd_Ind2 | grep -w "Completed" | wc -l` -eq 1 ]
+                                        then
+                                                Src_FL_Cmpltd_Ind=1
+                                        elif [ `grep -w $Btch_Dt ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind1 | grep -w $Src_FL_Cmpltd_Ind2 | grep -w "Failed" | wc -l` -ge 1 -a `grep -w $Src_FL_Cmpltd_Ind1 ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Log_FL_Nm} | grep -w $Src_FL_Cmpltd_Ind2 | grep -w "Failed" | wc -l` -le 3 ]
+                                        then
+                                                Src_FL_Cmpltd_Ind=0
+                                        else
+                                                Src_FL_Cmpltd_Ind=2
+                                        fi
+                                else
+                                        Src_FL_Cmpltd_Ind=0
+                                fi
+
+                                echo Source file ingested indicator for $line is $Src_FL_Cmpltd_Ind
+
+
+                                Src_FL_Prcs_Ind=`grep -w "$Src_NM" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_Ing_Mstr_Tbl_Lst} | wc -l`
+                                Src_Schema_FL_Cnt=`grep "$line$Pfx_Schema${Src_NM^^}$Schema_Extn" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | wc -l`
+                                Src_Schema_FL_Size=`grep "$line$Pfx_Schema${Src_NM^^}$Schema_Extn" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | awk -F" " '{print $5}'`
+                                Src_Partm_FL_Size1=`grep "${line}part-m*" ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm} | awk -F" " '{print $5}'`
+                                                                Src_Partm_FL_Size=`echo $Src_Partm_FL_Size1 | awk '{ for(i = 1; i <= NF; i++) {sum+=$i} { print sum; } }'`
+
+
+                                echo -e "\n"Attrib values are Src_NM:$Src_NM,Src_FL_Cmpltd_Ind1:$Src_FL_Cmpltd_Ind1,Src_FL_Cmpltd_Ind:$Src_FL_Cmpltd_Ind,Src_FL_Prcs_Ind:$Src_FL_Prcs_Ind,Src_Schema_FL_Cnt:$Src_Schema_FL_Cnt,Src_Schema_FL_Size:$Src_Schema_FL_Size,Src_Stats_FL_Cnt:$Src_Stats_FL_Cnt,Src_Stats_FL_Size:$Src_Stats_FL_Size,Src_Partm_FL_Cnt:$Src_Partm_FL_Cnt,Src_Partm_FL_Size1:$Src_Partm_FL_Size1,Src_Partm_FL_Size:$Src_Partm_FL_Size
+
+                                if [ $Src_FL_Cmpltd_Ind -eq 0  ] && [ $Src_FL_Prcs_Ind -eq 1  ] && [ $Src_Schema_FL_Cnt -eq 1 ] && [ $Src_Schema_FL_Size -ne 0 ] && [ $Src_Stats_FL_Cnt -eq 1 ] && [ $Src_Stats_FL_Size -ne 0 ] && [ $Src_Partm_FL_Cnt -eq 8 ] && [ $Src_Partm_FL_Size -ne 0  ]
+                                then
+
+                                        echo -e "\n"Ecomm source file/s is/are available for processing, set Src_Data_FL_Exist_Ind to 1, in order to process the files even after the run window"\n"
+                                        Src_Data_FL_Exist_Ind=1
+                                        break
+
+                                else
+
+                                        echo -e "\n"There are no Ecomm valid source file/s exists for processing
+
+                                fi
+
+                        done < ${BDA_Nd_Ecomm_Tmp_Loc}${Ecomm_All_Src_FL_Nm_byExtDt}
+
+                else
+
+                        echo -e "\n"There are no Ecomm valid source file/s exists for processing
+
+                fi
+
+        fi
+
+done
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+echo -e "\n"Copy and Drop Snapshot Partitions process started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+echo "$sn_hive_conf" >> ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Rm_Partition_Nm}
+while read line;
+do
+v_tb_type=`echo $line | cut -f3 -d'|'`
+if [ "$v_tb_type" = "Dimensional" ]
+then
+    v_Src_NM=`echo $line | cut -f2 -d'|'`
+    v_Src_NM_Sn=`echo "$v_Src_NM" | awk '{print tolower($0)"_snpsht"}'`
+    hdfs dfs -ls "${HDFS_Ecomm_Tgt_Loc}${v_Src_NM_Sn}" | grep extract_date > ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hdfs_Nm}
+    # copy latest partitions
+    cat ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hdfs_Nm} | awk -F"=" '{print $2}' | awk -v p="${HDFS_Ecomm_Tgt_Loc}${v_Src_NM_Sn}" -v c="$batch_dt_hive_fmt" '$1 > a { a = $1 } END { if(a < c) print "hdfs dfs -cp "p"/extract_date="a" "p"/extract_date="c; }' > ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_CopyHdfs_Nm}
+    . ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_CopyHdfs_Nm}
+
+    # drop hdfs partitions
+    hdfs dfs -ls "${HDFS_Ecomm_Tgt_Loc}${v_Src_NM_Sn}" | grep extract_date > ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hdfs_Nm}
+    cat ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hdfs_Nm} | awk -F"=" '{print $2}' > ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Partition_Nm}
+    cat ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Partition_Nm} | sort -nr  | awk '{print substr($1,1,7)" "$1}'|  awk '{ a[$1] = $2 } END {for( k in a) print a[k]}'| sort -nr -k1,1 | head -$No_Partitions > ${BDA_Nd_Ecomm_Tmp_Loc}${Selected_Partition_Nm}
+    echo $batch_dt_hive_fmt >> ${BDA_Nd_Ecomm_Tmp_Loc}${Selected_Partition_Nm}
+    grep -Fvxf ${BDA_Nd_Ecomm_Tmp_Loc}${Selected_Partition_Nm} ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Partition_Nm} > ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Rm_Partition_Nm}
+    awk -v v_tb="${HDFS_Ecomm_Tgt_Loc}${v_Src_NM_Sn}" '{print "hdfs dfs -rm -r "v_tb"/extract_date="$0}' ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Rm_Partition_Nm} > ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_HDFS_Rm_Partition_Nm}
+    . ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_HDFS_Rm_Partition_Nm}
+    echo -e HDFS for the unnesscesary hdfs partitions of ${HDFS_Ecomm_Tgt_Loc}${v_Src_NM_Sn} is removed completely at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+    #drop hive partitions
+    awk -v q=\'  '{print "PARTITION (extract_date="q$1q"),"}' ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Rm_Partition_Nm} | tr -d '\n' | sed 's/.$//'  | awk -v table=${Ecomm_BDA_Tgt_Schema}.${v_Src_NM_Sn} '{print "ALTER TABLE "table" DROP "$0" ;"}'>> ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Rm_Partition_Nm}
+fi
+done < ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm}
+
+#drop hive partitions
+hive -f  ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Rm_Partition_Nm}
+echo -e DROP PARTITIONS in Hive MetaStore ${Ecomm_BDA_Tgt_Schema}.${v_Src_NM_Sn} is removed completely at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+
+echo -e "\n"Copy and Drop partitions process finished at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+#refresh everything
+echo -e "\n"Refresh snapshot tables process started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+echo "$sn_hive_conf" >> ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Msck_Nm}
+while read line;
+do
+v_tb_type=`echo $line | cut -f3 -d'|'`
+if [ "$v_tb_type" = "Dimensional" ]
+then
+    v_Src_NM=`echo $line | cut -f2 -d'|'`
+    v_Src_NM_Sn=${v_Src_NM}_snpsht
+    echo "MSCK REPAIR TABLE ${Ecomm_BDA_Tgt_Schema}.${v_Src_NM_Sn}; " >> ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Msck_Nm}
+    echo "INVALIDATE METADATA ${Ecomm_BDA_Tgt_Schema}.${v_Src_NM_Sn}; " >> ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Implala_Invalidate_Nm}
+fi
+
+done < ${BDA_Nd_Ecomm_Tmp_Loc}${HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm}
+
+hive -f ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Hive_Msck_Nm}
+impala-shell --ssl -c -f ${BDA_Nd_Ecomm_Tmp_Loc}${Tmp_Implala_Invalidate_Nm}
+
+echo -e "\n"Refresh snapshot tables process finished at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+
+hive -e "set mapred.job.queue.name=ingestion; set hive.msck.path.validation=ignore;msck repair table audit.be_payments; msck repair table audit.fe_payments; msck repair table audit.vap_payments_accounting_data; msck repair table audit.rpt_txn_outbound_summary; msck repair table audit.fe_batches; msck repair table audit.vap_payments_additional_data; msck repair table audit.vap_outbound_batches; msck repair table audit.vap_reclassification_records; msck repair table audit.rpt_financial_summary; msck repair table audit.vap_merchants_snap; msck repair table audit.vap_organizations_snap; msck repair table audit.rpt_ctgry_nds; msck repair table audit.mp_legal_entity_principal; msck repair table audit.acct_accounts; msck repair table audit.vap_mcc_known; msck repair table audit.rpt_fee_summary; msck repair table audit.act_fee_ref; msck repair table audit.act_fee_category_ref; msck repair table audit.vap_intrchg_fee_xref; msck repair table audit.bil_passthrough_fee_ref; msck repair table audit.rpt_litle_acct_actvy; msck repair table audit.meta_mrchnt_prcssng_grps; msck repair table audit.vap_curncy_cde_ref;"
+
+impala-shell --ssl -q "set request_pool = ingestion; invalidate metadata audit.be_payments; invalidate metadata audit.fe_payments; invalidate metadata audit.vap_payments_accounting_data; invalidate metadata audit.rpt_txn_outbound_summary; invalidate metadata audit.fe_batches; invalidate metadata audit.vap_payments_additional_data; invalidate metadata audit.vap_outbound_batches; invalidate metadata audit.vap_reclassification_records; invalidate metadata audit.rpt_financial_summary; invalidate metadata audit.vap_merchants_snap; invalidate metadata audit.vap_organizations_snap; invalidate metadata audit.rpt_ctgry_nds; invalidate metadata audit. mp_legal_entity_principal; invalidate metadata audit.acct_accounts; invalidate metadata audit.vap_mcc_known; invalidate metadata audit.rpt_fee_summary; invalidate metadata audit.act_fee_ref; invalidate metadata audit.act_fee_category_ref; invalidate metadata audit.vap_intrchg_fee_xref; invalidate metadata audit.bil_passthrough_fee_ref; invalidate metadata audit.rpt_litle_acct_actvy; invalidate metadata audit.meta_mrchnt_prcssng_grps; invalidate metadata audit.vap_curncy_cde_ref;"
+
+impala-shell --ssl -q "set request_pool = ingestion; refresh  audit.be_payments; refresh  audit.fe_payments; refresh  audit.vap_payments_accounting_data; refresh  audit.rpt_txn_outbound_summary; refresh  audit.fe_batches; refresh  audit.vap_payments_additional_data; refresh  audit.vap_outbound_batches; refresh  audit.vap_reclassification_records; refresh  audit.rpt_financial_summary; refresh  audit.vap_merchants_snap; refresh  audit.vap_organizations_snap; refresh  audit.rpt_ctgry_nds; refresh  audit. mp_legal_entity_principal; refresh  audit.acct_accounts; refresh  audit.vap_mcc_known; refresh  audit.rpt_fee_summary; refresh  audit.act_fee_ref; refresh  audit.act_fee_category_ref; refresh  audit.vap_intrchg_fee_xref; refresh  audit.bil_passthrough_fee_ref; refresh  audit.rpt_litle_acct_actvy; refresh  audit.meta_mrchnt_prcssng_grps; refresh  audit.vap_curncy_cde_ref;"
+
+
+
+echo -e "\n"BDA Ingestion process Script $0 completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+
+#hadoop fs -getmerge ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}* ${BDA_Nd_Ecomm_Tmp_Loc}Hive_Ecomm_Ing_Log_Tbl.txt
+
+#hadoop fs -put -f ${BDA_Nd_Ecomm_Tmp_Loc}Hive_Ecomm_Ing_Log_Tbl.txt ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}
+
+hadoop fs -rm -skipTrash ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}*
+
+
+hive -e "set mapred.job.queue.name=ingestion; set hive.msck.path.validation=ignore; msck repair table ${Ecomm_Ing_Log_Tbl};"
+
+impala-shell --ssl -q "set request_pool = ingestion; invalidate metadata ${Ecomm_Ing_Log_Tbl}; refresh ${Ecomm_Ing_Log_Tbl};"
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+rm -rf /tmp/Ecomm_Dynamic_Ing
+
+-----------spark_submit.sh
+set -x
+#! /bin/sh
+
+#Script Name    : Spark_Submit.sh
+#Description    : This script does the below
+#                 1. Derive the parameters required for submitting spark process
+#                 2. Pre Logging to control table
+#                 3. Submit the spark process for a particular source
+#                 4. Post Logging to control table
+#                 5. Generate alerts as required
+#Owner          : eComm DS Dev Team
+#Date Created   : 2019-02-05
+#Usage          : sh Spark_Submit.sh <property file name>
+#
+#==========================================  CHANGES START  ==================================================
+#
+#SL_No  Change_Ref#     Changed_By      Change_Date     Change_Comments
+#=====  ===========     ==========      ===========     ===============
+#
+#
+#==========================================  CHANGES END  ====================================================
+. /tmp/Ecomm_Dynamic_Ing/tmp/ingest_app_env.txt
+
+
+Hdfs_Prop_file=$1
+Ecomm_BDA_Tgt_Schema="audit"
+
+export Sprk_Prcs_Strtd_TS=$(date '+%Y%m%d%H%M%S')
+export Sprk_Prcs_Strtd_TS_Fmt=`date +%Y-%m-%d_%H-%M-%S_%N`
+
+Sprk_Script_Log_Nm1=$(echo $Hdfs_Prop_file | cut -d "/" -f7 | cut -d "." -f1 | cut -c5-)
+Sprk_Script_Log_Nm=`echo Ecomm_Ing_${Sprk_Script_Log_Nm1}`
+
+export Log_File=${Sprk_Script_Log_Nm}_${Sprk_Prcs_Strtd_TS_Fmt}.log
+export Err_Log_File=${Sprk_Script_Log_Nm}_Error_${Sprk_Prcs_Strtd_TS_Fmt}.log
+
+exec 1> ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} 2> ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File}
+
+echo -e "\n"Reading property file ${Hdfs_Prop_file} in order to ingest the data into BDA started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+Hdfs_Prop_file_nm=$(echo $Hdfs_Prop_file | cut -d "/" -f7)
+BDA_Prop_file_loc=${BDA_Nd_Ecomm_Tmp_Loc}$Hdfs_Prop_file_nm
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+
+Sprk_tbl_id=$(cat $BDA_Prop_file_loc | grep -e tbl_id | cut -d'|' -f2)
+Sprk_SRC_FILE_NM=$(cat $BDA_Prop_file_loc | grep -e SRC_FILE_NM | cut -d'|' -f2)
+Sprk_TAR_FILE_NM=$(cat $BDA_Prop_file_loc | grep -e TAR_FILE_NM | cut -d'|' -f2)
+Sprk_REPORT_FILE_PATH=$(cat $BDA_Prop_file_loc | grep -e REPORT_FILE_PATH | cut -d'|' -f2)
+Sprk_REPORT_FILE_NM=$(cat $BDA_Prop_file_loc | grep -e REPORT_FILE_NM | cut -d'|' -f2)
+Sprk_ARC_FILE_NM=$(cat $BDA_Prop_file_loc | grep -e ARC_FILE_NM | cut -d'|' -f2)
+Sprk_ARC_FILE_PATH=$(cat $BDA_Prop_file_loc | grep -e ARC_FILE_PATH | cut -d'|' -f2)
+Sprk_TAR_FILE_PATH=$(cat $BDA_Prop_file_loc | grep -e TAR_FILE_PATH | cut -d'|' -f2)
+Sprk_SRC_FILE_PATH=$(cat $BDA_Prop_file_loc | grep -e SRC_FILE_PATH | cut -d'|' -f2)
+Sprk_SRC_FILE_SCHEMA_NM=$(cat $BDA_Prop_file_loc | grep -e SRC_FILE_SCHEMA_NM | cut -d'|' -f2)
+Sprk_SRC_FILE_STATS_NM=$(cat $BDA_Prop_file_loc | grep -e SRC_FILE_STATS_NM | cut -d'|' -f2)
+Sprk_Dedup_Key=$(cat $BDA_Prop_file_loc | grep -e Dedup_Key | cut -d'|' -f2)
+Sprk_Dedup_order_Key=$(cat $BDA_Prop_file_loc | grep -e Dedup_order_Key | cut -d'|' -f2)
+Sprk_TIME_COLS=$(cat $BDA_Prop_file_loc | grep -e TIME_COLS | cut -d'|' -f2)
+Sprk_TBL_NM=$(cat $BDA_Prop_file_loc | grep -e TBL_NAME | cut -d'|' -f2)
+Sprk_MVAL=$(cat $BDA_Prop_file_loc | grep -e MVAL | cut -d'|' -f2)
+Sprk_Sbmt_Ing_Pool=$(cat $BDA_Prop_file_loc | grep -e Spark_Sbmt_Ing_Pool | cut -d'|' -f2)
+Sprk_Sbmt_Ing_Executors=$(cat $BDA_Prop_file_loc | grep -e Spark_Sbmt_Ing_Executors | cut -d'|' -f2)
+Sprk_Sbmt_Ing_Cores=$(cat $BDA_Prop_file_loc | grep -e Spark_Sbmt_Ing_Cores | cut -d'|' -f2)
+Sprk_Sbmt_Ing_Exec_Mem=$(cat $BDA_Prop_file_loc | grep -e Spark_Sbmt_Ing_Exec_Mem | cut -d'|' -f2)
+Sprk_Sbmt_Ing_Drvr_Mem=$(cat $BDA_Prop_file_loc | grep -e Spark_Sbmt_Ing_Drvr_Mem | cut -d'|' -f2)
+Sprk_extract_date=$(cat $BDA_Prop_file_loc | grep -e extract_dt | cut -d'|' -f2)
+PART_CAL_VAL=$(cat $BDA_Prop_file_loc | grep -e PART_CAL_VAL | cut -d'|' -f2)
+# added on 0403
+table_type=$(cat $BDA_Prop_file_loc | grep -e table_type  | cut -d'|' -f2)
+TAR_SNPSHT_FILE_NM=$(cat $BDA_Prop_file_loc | grep -e TAR_SNPSHT_FILE_NM | cut -d'|' -f2)
+snpsht_query=$(cat $BDA_Prop_file_loc | grep -e snpsht_query | cut -d'|' -f2)
+
+echo -e "\n"Spark Ingestion script for source $Sprk_TBL_NM with extract date $Sprk_extract_date started at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+echo -e "\n"Below are the parameters used for ingestion via spark for source $Sprk_TBL_NM with extract date $Sprk_extract_date"\n"
+cat $BDA_Prop_file_loc
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+
+Sprk_Src_Cnt=$(hdfs dfs -cat ${Sprk_SRC_FILE_PATH}${Sprk_SRC_FILE_NM}| wc -l)
+echo -e "\n"Source record count for $Sprk_TBL_NM with extract date $Sprk_extract_date is $Sprk_Src_Cnt
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+Sprk_Src_Size1=$(hdfs dfs -ls ${Sprk_SRC_FILE_PATH}${Sprk_SRC_FILE_NM} | awk -F" " '{print $5}')
+Sprk_Src_Size=`echo $Sprk_Src_Size1 | awk '{ for(i = 1; i <= NF; i++) {sum+=$i} { print sum; } }'`
+echo Source file/s size for $Sprk_TBL_NM with extract date $Sprk_extract_date is $Sprk_Src_Size
+
+Sprk_Strt_Tm=`date '+%Y-%m-%d %H:%M:%S.%N'`
+echo -e "\n"Spark Start time is ${Sprk_Strt_Tm}
+
+
+echo ${Sprk_tbl_id}''${Src_Sys}''${Job_Invoking_Agent}''${Sprk_TBL_NM}''"${Sprk_TBL_NM^^}"''${Sprk_SRC_FILE_NM}''${Sprk_SRC_FILE_STATS_NM}''${Sprk_SRC_FILE_SCHEMA_NM}''${Sprk_extract_date}''''''''''"Started"''${Sprk_Strt_Tm}''''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+echo -e "\n"Spark ingestion logging table updation started at `date +%Y-%m-%d_%H-%M-%S_%N`
+hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+echo -e Spark ingestion logging table updation completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+if [ ${table_type} = "Dimensional" ]
+then
+
+        echo ${Sprk_tbl_id}''${Src_Sys}''${Job_Invoking_Agent}''${Sprk_TBL_NM}"_snpsht"''"${Sprk_TBL_NM}"''${Sprk_TBL_NM}''''''${Sprk_extract_date}''''''''''"Started"''${Sprk_Strt_Tm}''''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+        echo -e "\n"Spark ingestion logging table updation started at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+        echo -e Spark ingestion logging table updation completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+        echo -e "\nSpark submit triggered for ${Sprk_TBL_NM} and ${Sprk_TBL_NM}_snpsht with extract date $Sprk_extract_date started at `date +%Y-%m-%d_%H-%M-%S_%N`"
+
+else
+
+        echo -e "\nSpark submit triggered for ${Sprk_TBL_NM} with extract date $Sprk_extract_date started at `date +%Y-%m-%d_%H-%M-%S_%N`"
+
+fi
+
+        echo Table source with extract date ${Sprk_extract_date} refresh to log table started at `date +%Y-%m-%d_%H-%M-%S_%N`
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+        hive -e "msck repair table ${Ecomm_Ing_Log_Tbl};"
+        echo Table source with extract date ${Sprk_extract_date} refresh to log table completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+spark2-submit --queue ${Spark_Sbmt_Ing_Pool} --class ${Class_Nm_Sprk_Ing} --deploy-mode ${Spark_Deploy_Md} --master yarn --num-executors ${Spark_Sbmt_Ing_Executors} --executor-cores ${Spark_Sbmt_Ing_Cores} --executor-memory ${Spark_Sbmt_Ing_Exec_Mem} --driver-memory ${Spark_Sbmt_Ing_Drvr_Mem} --conf spark.yarn.principal=${principal} --conf spark.yarn.keytab=${pr_keytab} --files /etc/hive/conf/hive-site.xml ${HDFS_Jar_Loc}${Jar_Nm_Sprk_Ing} ${Hdfs_Prop_file}
+
+
+if [[ $? = 0 ]]
+then
+
+        echo -e "\nSpark submit triggered for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} completed at `date +%Y-%m-%d_%H-%M-%S_%N`"
+
+        Sprk_End_Tm=`date '+%Y-%m-%d %H:%M:%S.%N'`
+
+        Sprk_Src_Cnt=$(hdfs dfs  -cat ${Sprk_REPORT_FILE_PATH}${Sprk_REPORT_FILE_NM}/part-*.csv | grep -e ${Sprk_SRC_FILE_NM} | cut -d "," -f3)
+        echo -e "\n"Source count for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} is ${Sprk_Src_Cnt}
+
+        Sprk_Dedup_Cnt=$(hdfs dfs  -cat ${Sprk_REPORT_FILE_PATH}${Sprk_REPORT_FILE_NM}/part-*.csv | grep -e ${Sprk_SRC_FILE_NM} | cut -d "," -f2)
+        echo -e "\n"Dedup count for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} is ${Sprk_Dedup_Cnt}
+
+        Sprk_Tar_Cnt=$(hdfs dfs  -cat ${Sprk_TAR_FILE_PATH}${Sprk_TAR_FILE_NM}/part-*.csv | wc -l)
+        echo Target count for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} is ${Sprk_Tar_Cnt}
+
+        job_cnt_recncl1=`expr ${Sprk_Dedup_Cnt} - ${Sprk_Tar_Cnt}`
+        if [ ${job_cnt_recncl1} -ne 0 ]
+        then
+                job_cnt_recncl='UNMATCHED'
+                echo -e Ecomm BDA Ingestion post dedup and target counts for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date}: "\n\n"Reconciliation status:${job_cnt_recncl}"\n"Post Dedup Count:${Sprk_Dedup_Cnt}"\n"Target Count:${Sprk_Tar_Cnt} | mail -s "Alert:Ecomm BDA Ingestion counts mismatch status - ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} in `hostname` at `date +%Y-%m-%d_%H-%M-%S_%N`" "${Rcvr_Mail_Addr}"
+        else
+                job_cnt_recncl='MATCHED'
+                echo -e "\n"Spark BDA Ingestion for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} completed with status:Succeeded
+        fi
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+        if [ ${job_cnt_recncl} == "MATCHED" ]
+        then
+                Exec_Rslt_Desc="SUCCESS - Source and Target counts matched"
+        else
+                Exec_Rslt_Desc="FAILED - Source and Target counts not matched"
+        fi
+
+        echo -e "\n"Demographics_db.etl_log_sta entries are as below"\n"
+
+                hdfs dfs -mkdir ${HDFS_HV_Log_Loc}${Hive_Etl_Log_Sta_Tbl}/extract_date=${Sprk_extract_date}
+
+        echo `date +%Y%m%d%H%M%S`''${Job_Invoking_Agent}''${Sprk_TBL_NM}''''${Sprk_Strt_Tm}''${Sprk_End_Tm}''"Completed"''${Exec_Rslt_Desc}''''${Src_Sys}''"FILE"''${Sprk_SRC_FILE_NM}''${Sprk_Dedup_Cnt}''''''''"BDA-HDFS"''${Sprk_TBL_NM}''${Sprk_Tar_Cnt}''0''''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                echo -e "\n"Spark ingestion logging table updation into Demographics_db.etl_log_sta started at `date +%Y-%m-%d_%H-%M-%S_%N`
+                hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_HV_Log_Loc}${Hive_Etl_Log_Sta_Tbl}/extract_date=${Sprk_extract_date}/${Sprk_TBL_NM}_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+                echo -e Spark ingestion logging table updation into Demographics_db.etl_log_sta completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+                echo ${Sprk_tbl_id}''${Src_Sys}''${Job_Invoking_Agent}''${Sprk_TBL_NM}''"${Sprk_TBL_NM^^}"''${Sprk_SRC_FILE_NM}''${Sprk_SRC_FILE_STATS_NM}''${Sprk_SRC_FILE_SCHEMA_NM}''${Sprk_extract_date}''${Sprk_Src_Cnt}''${Sprk_Dedup_Cnt}''${Sprk_Tar_Cnt}''${job_cnt_recncl}''"Completed"''${Sprk_Strt_Tm}''${Sprk_End_Tm}''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                echo -e "\n"Spark ingestion logging table updation started at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+                echo -e Spark ingestion logging table updation completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+                echo Table source ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} refresh started at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hive -e "msck repair table ${Ecomm_BDA_Tgt_Schema}.${Sprk_TBL_NM};"
+        impala-shell --ssl -q "set request_pool = ingestion; invalidate metadata ${Ecomm_BDA_Tgt_Schema}.${Sprk_TBL_NM}; refresh ${Ecomm_BDA_Tgt_Schema}.${Sprk_TBL_NM};"
+        echo Table source ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} refresh completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+        echo -e "\n"Archival process for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} started at `date +%Y-%m-%d_%H-%M-%S_%N`
+#       hdfs dfs -mv ${Sprk_SRC_FILE_PATH}/`echo ${Sprk_SRC_FILE_NM} | cut -f1,2 -d/` ${Sprk_ARC_FILE_PATH}/${Sprk_ARC_FILE_NM}
+        hadoop distcp -D mapreduce.job.queuename=ingestion ${Sprk_SRC_FILE_PATH}`echo ${Sprk_SRC_FILE_NM} | cut -f1,2 -d/` ${Sprk_ARC_FILE_PATH}${Sprk_ARC_FILE_NM}
+
+        if [ $? -eq 0 ]
+        then
+                hdfs dfs -rm -r ${Sprk_SRC_FILE_PATH}`echo ${Sprk_SRC_FILE_NM} | cut -f1,2 -d/`
+        else
+                echo -e "\n"Ecomm BDA Ingestion archival Failed for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} | mail -s "Alert:Ecomm BDA Ingestion - ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} archival status in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
+        fi
+
+        echo Archival process for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+##snapshot table
+
+
+                if [ ${table_type} = "Dimensional" ]
+                then
+
+                        echo `date +%Y%m%d%H%M%S`''${Job_Invoking_Agent}''${Sprk_TBL_NM}"_snpsht"''''${Sprk_Strt_Tm}''${Sprk_End_Tm}''"Completed"''''''${Src_Sys}''"FILE"''${Sprk_TBL_NM}''''''''''"BDA-HDFS"''${Sprk_TBL_NM}"_snpsht"''''0''''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_HV_Log_Loc}${Hive_Etl_Log_Sta_Tbl}/extract_date=${Sprk_extract_date}/${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+
+                        echo ${Sprk_tbl_id}''${Src_Sys}''${Job_Invoking_Agent}''${Sprk_TBL_NM}"_snpsht"''"${Sprk_TBL_NM}"''${Sprk_TBL_NM}''''''${Sprk_extract_date}''''''''''"Completed"''${Sprk_Strt_Tm}''${Sprk_End_Tm}''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                        echo -e "\n"Table source ${Sprk_TBL_NM}_snpsht with extract date ${Sprk_extract_date} refresh started at `date +%Y-%m-%d_%H-%M-%S_%N`
+                        hive -e "msck repair table ${Ecomm_BDA_Tgt_Schema}.${Sprk_TBL_NM}_snpsht;"
+                        impala-shell --ssl -q "set request_pool = ingestion; invalidate metadata ${Ecomm_BDA_Tgt_Schema}.${Sprk_TBL_NM}_snpsht; refresh ${Ecomm_BDA_Tgt_Schema}.${Sprk_TBL_NM}_snpsht;"
+                        echo -e "\n"Table source ${Sprk_TBL_NM}_snpsht with extract date ${Sprk_extract_date} refresh completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+                else
+
+                        echo ""
+
+                fi
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+        echo Spark ingestion with extract date ${Sprk_extract_date} refresh to legacy log table Demographics_db.etl_log_sta started at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hive -e "msck repair table ${Hive_Demographics_Schema}.${Hive_Etl_Log_Sta_Tbl};"
+        echo Spark ingestion with extract date ${Sprk_extract_date} refresh to legacy log table Demographics_db.etl_log_sta completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+                echo Table source with extract date ${Sprk_extract_date} refresh to log table started at `date +%Y-%m-%d_%H-%M-%S_%N`
+                hive -e "msck repair table ${Ecomm_Ing_Log_Tbl};"
+                echo Table source with extract date ${Sprk_extract_date} refresh to log table completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+
+else
+
+        echo -e "\nSpark submit triggered for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} completed at `date +%Y-%m-%d_%H-%M-%S_%N`"
+
+        Sprk_End_Tm=`date '+%Y-%m-%d %H:%M:%S.%N'`
+        echo -e "\n"Spark BDA Ingestion for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} completed with status:Failed
+
+        echo ${Sprk_tbl_id}''${Src_Sys}''${Job_Invoking_Agent}''${Sprk_TBL_NM}''"${Sprk_TBL_NM^^}"''${Sprk_SRC_FILE_NM}''${Sprk_SRC_FILE_STATS_NM}''${Sprk_SRC_FILE_SCHEMA_NM}''${Sprk_extract_date}''${Sprk_Src_Cnt}''${Sprk_Dedup_Cnt}''${Sprk_Tar_Cnt}''${job_cnt_recncl}''"Failed"''${Sprk_Strt_Tm}''${Sprk_End_Tm}''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                echo -e "\n"Spark static control table updation started for ${Sprk_TBL_NM} at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}${Sprk_TBL_NM}_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+                echo -e Spark static control table updation completed for ${Sprk_TBL_NM} at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+
+                if [ ${table_type} = "Dimensional" ]
+                then
+
+                        echo -e "\n"Spark BDA Ingestion for ${Sprk_TBL_NM}_snpsht with extract date ${Sprk_extract_date} completed with status:Failed
+
+                        echo `date +%Y%m%d%H%M%S`''${Job_Invoking_Agent}''${Sprk_TBL_NM}"_snpsht"''''${Sprk_Strt_Tm}''${Sprk_End_Tm}''"Failed"''''''${Src_Sys}''"FILE"''${Sprk_TBL_NM}''''''''''"BDA-HDFS"''${Sprk_TBL_NM}"_snpsht"''''0''''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_HV_Log_Loc}${Hive_Etl_Log_Sta_Tbl}/extract_date=${Sprk_extract_date}/${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_etl_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+                        echo Spark ingestion with extract date ${Sprk_extract_date} refresh to legacy log table Demographics_db.etl_log_sta started at `date +%Y-%m-%d_%H-%M-%S_%N`
+                        hive -e "msck repair table ${Hive_Demographics_Schema}.${Hive_Etl_Log_Sta_Tbl};"
+                        echo Spark ingestion with extract date ${Sprk_extract_date} refresh to legacy log table Demographics_db.etl_log_sta completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+                        echo -e "\nSpark submit triggered for ${Sprk_TBL_NM}_snpsht with extract date ${Sprk_extract_date} completed at `date +%Y-%m-%d_%H-%M-%S_%N`"
+                        echo ${Sprk_tbl_id}''${Src_Sys}''${Job_Invoking_Agent}''${Sprk_TBL_NM}"_snpsht"''"${Sprk_TBL_NM}"''${Sprk_TBL_NM}''''''${Sprk_extract_date}''''''''''"Failed"''${Sprk_Strt_Tm}''${Sprk_End_Tm}''${Btch_Dt} > ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+
+                        echo -e "\n"Spark static control table updation started for ${Sprk_TBL_NM}_snpsht at `date +%Y-%m-%d_%H-%M-%S_%N`
+                        hdfs dfs -appendToFile ${BDA_Nd_Ecomm_Tmp_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm} ${HDFS_Ecomm_Ctrl_Log_Tbl_Loc}${Sprk_TBL_NM}_snpsht_${Sprk_extract_date}_${HDFS_Ecomm_Ctrl_Log_FL_Nm}
+                        echo -e Spark static control table updation completed for ${Sprk_TBL_NM}_snpsht at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+                        echo -e "\n"Ecomm BDA ingestion Failed for ${Sprk_TBL_NM} and ${Sprk_TBL_NM}_snpsht with extract date ${Sprk_extract_date} | mail -s "Alert:Ecomm BDA Ingestion status - ${Sprk_TBL_NM} and ${Sprk_TBL_NM}_snpsht with extract date ${Sprk_extract_date} alert in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
+
+                else
+
+                        echo -e "\n"Ecomm BDA ingestion Failed for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} | mail -s "Alert:Ecomm BDA Ingestion status - ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} alert in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
+
+                fi
+
+#        echo -e "\n"Ecomm BDA ingestion Failed for ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} | mail -s "Alert:Ecomm BDA Ingestion status - ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} alert in `hostname` on `date +%Y-%m-%d`" "${Rcvr_Mail_Addr}"
+
+
+
+                echo Table source ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} refresh to log table started at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hive -e "msck repair table ${Ecomm_Ing_Log_Tbl};"
+        echo Table source ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} refresh to log table completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+                echo Spark ingestion with extract date ${Sprk_extract_date} refresh to legacy log table Demographics_db.etl_log_sta started at `date +%Y-%m-%d_%H-%M-%S_%N`
+        hive -e "msck repair table ${Hive_Demographics_Schema}.${Hive_Etl_Log_Sta_Tbl};"
+        echo Spark ingestion with extract date ${Sprk_extract_date} refresh to legacy log table Demographics_db.etl_log_sta completed at `date +%Y-%m-%d_%H-%M-%S_%N`
+
+fi
+
+
+echo -e Spark Ingestion script for source ${Sprk_TBL_NM} with extract date ${Sprk_extract_date} completed at `date +%Y-%m-%d_%H-%M-%S_%N`"\n"
+
+hdfs dfs -put -f  ${BDA_Nd_Ecomm_Log_Loc}/${Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+hdfs dfs -put -f ${BDA_Nd_Ecomm_Log_Loc}/${Err_Log_File} ${BDA_Nd_Ecomm_Log_Loc_hdfs}
+
+export Job_Run_Intrvl="06:00:00"                                                # Duration of job run window
+export Job_Sleep_Intrvl="300"                                                   # Interval in seconds to sleep when files are unavilable
+export Batch_Size="5"                                                           # number of spark submit commands to be called parallely
+export Src_Sys="ecomm"                                                          # source system name
+export Job_Invoking_Agent="TWS"                                                 # Agent used to invoke the job
+export App_Dir="/opt"                                                           # application directory
+export Spark_Sbmt_Ing_Pool="ingestion"                                          # pool used to submit spark process
+export Spark_Sbmt_Ing_Executors="6"                                             # executors used to submit spark process
+export Spark_Sbmt_Ing_Cores="5"                                                 # cores used to submit spark process
+export Spark_Sbmt_Ing_Exec_Mem="15g"                                            # executor memory used to submit spark process
+export Spark_Sbmt_Ing_Drvr_Mem="15g"                                          # driver memory used to submit spark process
+export Hive_Demographics_Schema="demographics_db"                       # schema name for demographics database
+export Hive_Ecomm_Ctrl_Tbl="ecomm_ing_src_mstr"                                 # Ecomm control table name to hold static details
+export Hive_Ecomm_Ing_Log_Tbl="ecomm_ing_log_tbl"                               # Ecomm control log table name to hold dynamic logging of various ecomm sources ingestion details
+export Hive_Etl_Log_Sta_Tbl="etl_log_sta"                                       # Hive ETL log table name where the legacy ingestion logging takes place
+export Class_Nm_Sprk_Ing="com.worldpay.spark.ecommBDAIngst"                     # class name for spark ingestion
+export Jar_Nm_Sprk_Ing="EcommBDAIng.jar"                                        # jar name for spark ingestion
+export Jar_Nm_Util="Util.jar"                                                   # jar name for utility
+export Spark_Deploy_Md="cluster"                                                # spark submit deploy mode
+export PART_CAL_VAL="1000000"                                                     # to calculate number of partitions
+export Pfx_Stats="pump_PROD4_"                                                  # stats file prefix
+export Sfx_Stats="stats"                                                        # stats file suffix
+export Pfx_Schema="PROD4."                                                      # schema file prefix
+export Schema_Extn=".schema"                                                    # schema file extension
+
+
+export HDFS_Node_Loc="hdfs://bda1-ns"                                   # HDFS node location
+export HDFS_Ecomm_Base_Loc="${HDFS_Node_Loc}/vantiv/ecomm/"                                     # HDFS ecomm base location
+export HDFS_Ecomm_Config_Loc="${HDFS_Node_Loc}/vantiv/ecomm/config_files/"                      # HDFS ecomm configuration files location
+export HDFS_Jar_Loc="${HDFS_Node_Loc}/scripts/jars/"                                        # HDFS jar files location
+export HDFS_Ecomm_Landing_Loc="${HDFS_Node_Loc}/vantiv/ecomm/landing/"                          # HDFS ecomm landing location for source files
+export HDFS_Ecomm_Tgt_Loc="${HDFS_Node_Loc}/lake/audit/ecomm/"                          # HDFS ecomm target location
+export HDFS_Ecomm_Arc_Loc="${HDFS_Node_Loc}/vantiv/ecomm/archive/"                              # HDFS ecomm archival location
+export HDFS_HV_Log_Loc="${HDFS_Node_Loc}/lake/etl_logs/"                                        # HDFS legacy hive log tables location
+export HDFS_Ecomm_Rpt_Loc="${HDFS_Node_Loc}/vantiv/ecomm/report/"                               # HDFS ecomm report location
+export HDFS_Ecomm_Ctrl_Tbl_Loc="${HDFS_Node_Loc}/vantiv/ecomm/report/control_tbl/"              # HDFS hive control table for ecomm source master location
+export HDFS_Ecomm_Ctrl_Log_Tbl_Loc="${HDFS_Node_Loc}/vantiv/ecomm/report/control_log_tbl/"      # HDFS ecomm hive control log table location
+export Ecomm_Ctrl_Static_Tbl=${Hive_Demographics_Schema}.${Hive_Ecomm_Ctrl_Tbl} # Hive ecomm control table name to hold static details with schema name
+export Ecomm_Ing_Log_Tbl=${Hive_Demographics_Schema}.${Hive_Ecomm_Ing_Log_Tbl}  # Hive ecomm control log table name to hold logging of ecomm sources ingestion details with schema name
+export Etl_Log_Sta_Tbl=${Hive_Demographics_Schema}.${Hive_Etl_Log_Sta_Tbl}      # Hive ETL log table name to hold legacy ingestion logging details with schema name
+
+
+export BDA_Nd_Nm="bda1node05"                                                   # BDA local node name
+export BDA_Nd_Jar_Loc="/scripts/jars/"                                       # BDA local node jar files location
+export BDA_Nd_Shel_Scr_Loc="/tmp/Ecomm_Dynamic_Ing/shellscripts/"                               # BDA local node shell script files location
+export BDA_Nd_Conf_Loc="/tmp/Ecomm_Dynamic_Ing/config/"                                 # BDA local node configuration files location
+export BDA_Nd_Ecomm_Tmp_Loc="/tmp/Ecomm_Dynamic_Ing/tmp/"                               # BDA local node temporary files location
+export BDA_Nd_Ecomm_Log_Loc="/tmp/Ecomm_Dynamic_Ing/log/"                               # BDA local node log files location
+export BDA_Ecomm_Temp_Path="/tmp/Ecomm_Dynamic_Ing/tmp/"                                        # BDA local node temporary files location
+export BDA_Nd_Ecomm_Log_Loc_hdfs=/tmp/BDAtmp/logs/ecomm/logs/
+
+export Script_Nm=`basename $0 | cut -f1 -d'.'`                                  # script name
+export HDFS_Ecomm_Ctrl_Log_FL_Nm="BDAIng_Stats_FL.csv"                          # BDA ingestion initial statistics file name
+export HDFS_Ecomm_Ctrl_Src_Mstr_FL_Nm="Ecomm_Src_Static_Dtls.txt"               # Ecomm source master static details file name
+export Ecomm_All_Src_FL_Nm="Ecomm_Src_All_FL_Rcvd_lst.txt"                      # File name to store all the ecomm source files received for current
+export Ecomm_All_Src_FL_Nm_byExtDt="Ecomm_Src_Rcvd_lst_byExtDt.txt"             # File name to store all the unique ecomm sources with extract dates
+export Sprk_Scrpt_Nm="BDA_Spark.sh"                                             # BDA spark script name which gets generated dynamically as part of execution
+export Ecomm_Attrib_FL_Nm="Ecomm_Attrib.txt"                                    # File name to hold Ecomm attributes for all the sources received today
+export Ecomm_Ing_Mstr_Tbl_Lst="Mstr_Lst_Src_TBL_NM.txt"                         # Master list of ecomm source tables to be ingested into BDA
+export Sprk_Sbmt_Scrpt_Nm="spark_submit.sh"                                     # BDA spark submit script name through which the actual ingestion and transformations took place
+export BDA_Ecomm_Audit_FL_Nm="BDAIng_Stats_FL.csv"                              # BDA ingestion initial statistics file name
+
+export No_Partitions=25                                                         # Number of snapshot partitions running is 2 years
+export batch_dt_hive_fmt=$(date +%Y-%m-%d)                                      # Current day with Hive Format
+export Tmp_Hdfs_Nm="1all_hdfs_files.tmp"                                        # Tmp File Name
+export Tmp_Partition_Nm="1all_partitions.tmp"                                   # Tmp File Name
+export Tmp_CopyHdfs_Nm="2copied_hdfs.tmp"                                       # Tmp File Name
+export Selected_Partition_Nm="2selected_partitions.tmp"                         # Tmp File Name
+export Tmp_Rm_Partition_Nm="3removed_partitions.tmp"                            # Tmp File Name
+export Tmp_HDFS_Rm_Partition_Nm="4hdfs_rm_partitions.tmp"                       # Tmp File Name
+export Tmp_Hive_Rm_Partition_Nm="5hive_rm_partitions.tmp"                       # Tmp File Name
+export Tmp_Hive_Msck_Nm="6hive_msck.tmp"                                        # Tmp File Name
+export Tmp_Implala_Invalidate_Nm="6impala_invalidate.tmp"                       # Tmp File Name
+export sn_hive_conf='set mapreduce.job.queuename=ingestion; set hive.msck.path.validation=ignore; set hive.cli.errors.ignore=true; '
+
+export Rcvr_Mail_Addr="sushanth.chindam@fisglobal.com,janardhan.koushik.tadakamalla@fisglobal.com,Chandra.Lekkala@fisglobal.com"         # Mail ids for email notification
+
