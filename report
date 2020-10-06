@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
 
-object rptFcpsMidMonthly {
+object rptFcpsByMidMonthly {
 
   def main(args: Array[String]) {
 
