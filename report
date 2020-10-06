@@ -1,4 +1,4 @@
-package com.fis.ingest
+package com.fis.ecomm.reporting
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
 
-object rptFcpsMidMonth {
+object rptFcpsMidMonthly {
 
   def main(args: Array[String]) {
 
