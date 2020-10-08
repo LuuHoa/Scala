@@ -35,7 +35,7 @@ object rptFcpsByMidMonthly {
 
     val spark = SparkSession
       .builder()
-      .appName("rpt_fcps_mid_monthly")
+      .appName("rpt_fcps_by_mid_monthly")
       .config("spark.sql.warehouse.dir", "/tmp")
       .config("spark.hadoop.validateOutputSpecs", "false")
       .config("spark.debug.maxToStringFields", 100)
@@ -48,7 +48,7 @@ object rptFcpsByMidMonthly {
 
     try {
 
-      println("Start generating report rpt_fcps_mid_monthly")
+      println("Start generating report rpt_fcps_by_mid_monthly")
 
       //val current_date=java.time.LocalDate.now.toString
       //val current_date="2019-10-05"
@@ -66,24 +66,13 @@ object rptFcpsByMidMonthly {
         from_ext_date_105=to_ext_date.minusMonths(14).plusDays(15)
 
       }
-
-
       //val from_ext_date_90=to_ext_date.minusMonths(12).plusDays(1)
       //val from_ext_date_105=to_ext_date.minusMonths(13).plusDays(15)
       //val report_period=3
       //val report_period=12
-
-
       val to_ext_month = to_ext_date.toString.substring(0,7)
-      val to_ext_month_ts = to_ext_date.toString.substring(0,7)+ "-01 00:00:00.000000"
-
-
-
-      val target_path="/lake/ecomm/rpt_fcps_mid_monthly/"
-      //val target_path="/ecommbi/audit_parquet/rpt_fcps_mid_monthly"
-
-
-
+      val to_ext_month_ts = to_ext_date.toString.substring(0,7)+ "-01"
+      val target_path="/lake/ecomm/rpt_fcps_by_mid_monthly/"
       val df_tmp_rxp_in_range = spark.sql("""SELECT
        merchant_id,
        MERCHANT_NAME,
@@ -937,14 +926,14 @@ ON  t1.merchant_id = t2.merchant_id
       df_deposit_fraud_advice_metrics.createOrReplaceTempView("deposit_fraud_advice_metrics")
 
 
-      val df_rpt_fcps_mid_monthly=spark.sql("""SELECT dep.MERCHANT_ID
+      val df_rpt_fcps_by_mid_monthly=spark.sql("""SELECT dep.MERCHANT_ID
 ,dep.MERCHANT_NAME
 ,dep.ORGANIZATION_ID
 ,dep.ORGANIZATION_NAME
 ,dep.METHOD_OF_PAYMENT_CODE
 ,dep.SETTLEMENT_CURRENCY_CODE
 ,dep.SETTLEMENT_CURRENCY_DESC
-,'"""+to_ext_month_ts+"""' AS REPORTING_MONTH_DAY
+,cast('"""+to_ext_month_ts+"""' AS TIMESTAMP) AS REPORTING_MONTH_DAY
 ,NVL(dep.vol_deposit_count, 0)                  AS  vol_deposit_count
 ,NVL(dep.excptn_refund_count, 0)                AS  excptn_refund_count
 ,NVL(dep.vol_deposit_settlement_amount, 0)      AS  vol_deposit_settlement_amount
@@ -1098,7 +1087,7 @@ left join deposit_fraud_advice_metrics advice
        and NVL(dep.settlement_currency_code,'')=NVL(advice.settlement_currency_code,'')""")
 
 
-      df_rpt_fcps_mid_monthly.write.mode("overwrite").parquet(target_path+"reporting_month="+to_ext_month+"/reporting_period="+report_period)
+      df_rpt_fcps_by_mid_monthly.write.mode("overwrite").parquet(target_path+"reporting_month="+to_ext_month+"/reporting_period="+report_period)
 
 
       spark.catalog.dropTempView("tmp_rxp_in_range")
@@ -1111,7 +1100,7 @@ left join deposit_fraud_advice_metrics advice
       spark.catalog.dropTempView("deposit_fraud_advice")
       spark.catalog.dropTempView("deposit_fraud_advice_metrics")
 
-      println("Info : rpt_fcps_mid_monthly Ingestion is complete")
+      println("Info : rpt_fcps_by_mid_monthly Ingestion is complete")
 
 
     } catch {
