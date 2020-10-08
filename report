@@ -2,6 +2,7 @@ package com.fis.ecomm.reporting
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import org.apache.spark.sql.functions._
 
 
 import org.apache.spark.sql.{SaveMode, SparkSession}
@@ -40,6 +41,7 @@ object rptFcpsByMidMonthly {
       .config("spark.hadoop.validateOutputSpecs", "false")
       .config("spark.debug.maxToStringFields", 100)
       .config("spark.scheduler.mode", "FAIR")
+      .config("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
       .enableHiveSupport()
       .getOrCreate()
 
@@ -924,7 +926,7 @@ ON  t1.merchant_id = t2.merchant_id
      settlement_currency_desc""")
 
       df_deposit_fraud_advice_metrics.createOrReplaceTempView("deposit_fraud_advice_metrics")
-
+//,cast('"""+to_ext_month_ts+"""' AS TIMESTAMP)   AS reporting_month_day
 
       val df_rpt_fcps_by_mid_monthly=spark.sql("""SELECT dep.MERCHANT_ID
 ,dep.MERCHANT_NAME
@@ -933,145 +935,145 @@ ON  t1.merchant_id = t2.merchant_id
 ,dep.METHOD_OF_PAYMENT_CODE
 ,dep.SETTLEMENT_CURRENCY_CODE
 ,dep.SETTLEMENT_CURRENCY_DESC
-,cast('"""+to_ext_month_ts+"""' AS TIMESTAMP) AS REPORTING_MONTH_DAY
-,NVL(dep.vol_deposit_count, 0)                  AS  vol_deposit_count
-,NVL(dep.excptn_refund_count, 0)                AS  excptn_refund_count
-,NVL(dep.vol_deposit_settlement_amount, 0)      AS  vol_deposit_settlement_amount
-,NVL(dep.excptn_refund_settlement_amount, 0)    AS  excptn_refund_settlement_amount
-,NVL(cbk.excptn_cbks_count, 0)                  AS  excptn_cbks_count
-,NVL(cbk.excptn_cbks_amount, 0)                 AS  excptn_cbks_amount
-,NVL(cbk.excptn_fraud_cbks_count, 0)            AS  excptn_fraud_cbks_count
-,NVL(cbk.excptn_fraud_cbks_amount, 0)           AS  excptn_fraud_cbks_amount
-,NVL(match1.excptn_refund_mtch_count, 0)        AS  excptn_refund_mtch_count
-,NVL(match1.excptn_refund_mtch_amount, 0)       AS  excptn_refund_mtch_amount
-,NVL(match1.excptn_refund_mtch_count_mtchd, 0)  AS  excptn_refund_mtch_count_mtchd
-,NVL(match1.excptn_refund_mtch_amount_mtchd, 0) AS  excptn_refund_mtch_amount_mtchd
-,NVL(advice.cnt_all_total, 0)                   AS  cnt_all_total
-,NVL(advice.cnt_all_cbks, 0)                    AS  cnt_all_cbks
-,NVL(advice.cnt_all_frd_cbks, 0)                AS  cnt_all_frd_cbks
-,NVL(advice.amnt_all_total, 0)                  AS  amnt_all_total
-,NVL(advice.amnt_all_cbks, 0)                   AS  amnt_all_cbks
-,NVL(advice.amnt_all_frd_cbks, 0)               AS  amnt_all_frd_cbks
-,NVL(advice.cnt_cbk_prior_total, 0)             AS  cnt_cbk_prior_total
-,NVL(advice.cnt_cbk_prior_cbks, 0)              AS  cnt_cbk_prior_cbks
-,NVL(advice.cnt_cbk_prior_frd_cbks, 0)          AS  cnt_cbk_prior_frd_cbks
-,NVL(advice.amnt_cbk_prior_total, 0)            AS  amnt_cbk_prior_total
-,NVL(advice.amnt_cbk_prior_cbks, 0)             AS  amnt_cbk_prior_cbks
-,NVL(advice.amnt_cbk_prior_frd_cbks, 0)         AS  amnt_cbk_prior_frd_cbks
-,NVL(advice.cnt_ref_full_prior_total, 0)        AS  cnt_ref_full_prior_total
-,NVL(advice.cnt_ref_full_prior_cbks, 0)         AS  cnt_ref_full_prior_cbks
-,NVL(advice.cnt_ref_full_prior_frd_cbks, 0)     AS  cnt_ref_full_prior_frd_cbks
-,NVL(advice.amnt_ref_full_prior_total, 0)       AS  amnt_ref_full_prior_total
-,NVL(advice.amnt_ref_full_prior_cbks, 0)        AS  amnt_ref_full_prior_cbks
-,NVL(advice.amnt_ref_full_prior_frd_cbks, 0)    AS  amnt_ref_full_prior_frd_cbks
-,NVL(advice.cnt_ref_full_after_total, 0)        AS  cnt_ref_full_after_total
-,NVL(advice.cnt_ref_full_after_cbks, 0)         AS  cnt_ref_full_after_cbks
-,NVL(advice.cnt_ref_full_after_frd_cbks, 0)     AS  cnt_ref_full_after_frd_cbks
-,NVL(advice.amnt_ref_full_after_total, 0)       AS  amnt_ref_full_after_total
-,NVL(advice.amnt_ref_full_after_cbks, 0)        AS  amnt_ref_full_after_cbks
-,NVL(advice.amnt_ref_full_after_frd_cbks, 0)    AS  amnt_ref_full_after_frd_cbks
-,NVL(advice.cnt_not_ref_full_total, 0)          AS  cnt_not_ref_full_total
-,NVL(advice.cnt_not_ref_full_cbks, 0)           AS  cnt_not_ref_full_cbks
-,NVL(advice.cnt_not_ref_full_frd_cbks, 0)       AS  cnt_not_ref_full_frd_cbks
-,NVL(advice.amnt_not_ref_full_total, 0)         AS  amnt_not_ref_full_total
-,NVL(advice.amnt_not_ref_full_cbks, 0)          AS  amnt_not_ref_full_cbks
-,NVL(advice.amnt_not_ref_full_frd_cbks, 0)      AS  amnt_not_ref_full_frd_cbks
-,NVL(advice.excptn_cnt_prior_cbks, 0)           AS  excptn_cnt_prior_cbks
-,NVL(advice.excptn_cnt_prior_refunds, 0)        AS  excptn_cnt_prior_refunds
-,NVL(advice.excptn_amnt_prior_cbks, 0)          AS  excptn_amnt_prior_cbks
-,NVL(advice.excptn_amnt_prior_refunds, 0)       AS  excptn_amnt_prior_refunds
-,NVL(advice.excptn_cnt_0_cbks, 0)               AS  excptn_cnt_0_cbks
-,NVL(advice.excptn_cnt_0_refunds, 0)            AS  excptn_cnt_0_refunds
-,NVL(advice.excptn_amnt_0_cbks, 0)              AS  excptn_amnt_0_cbks
-,NVL(advice.excptn_amnt_0_refunds, 0)           AS  excptn_amnt_0_refunds
-,NVL(advice.excptn_cnt_1_cbks, 0)               AS  excptn_cnt_1_cbks
-,NVL(advice.excptn_cnt_1_refunds, 0)            AS  excptn_cnt_1_refunds
-,NVL(advice.excptn_amnt_1_cbks, 0)              AS  excptn_amnt_1_cbks
-,NVL(advice.excptn_amnt_1_refunds, 0)           AS  excptn_amnt_1_refunds
-,NVL(advice.excptn_cnt_2_cbks, 0)               AS  excptn_cnt_2_cbks
-,NVL(advice.excptn_cnt_2_refunds, 0)            AS  excptn_cnt_2_refunds
-,NVL(advice.excptn_amnt_2_cbks, 0)              AS  excptn_amnt_2_cbks
-,NVL(advice.excptn_amnt_2_refunds, 0)           AS  excptn_amnt_2_refunds
-,NVL(advice.excptn_cnt_3_cbks, 0)               AS  excptn_cnt_3_cbks
-,NVL(advice.excptn_cnt_3_refunds, 0)            AS  excptn_cnt_3_refunds
-,NVL(advice.excptn_amnt_3_cbks, 0)              AS  excptn_amnt_3_cbks
-,NVL(advice.excptn_amnt_3_refunds, 0)           AS  excptn_amnt_3_refunds
-,NVL(advice.excptn_cnt_4_cbks, 0)               AS  excptn_cnt_4_cbks
-,NVL(advice.excptn_cnt_4_refunds, 0)            AS  excptn_cnt_4_refunds
-,NVL(advice.excptn_amnt_4_cbks, 0)              AS  excptn_amnt_4_cbks
-,NVL(advice.excptn_amnt_4_refunds, 0)           AS  excptn_amnt_4_refunds
-,NVL(advice.excptn_cnt_5_cbks, 0)               AS  excptn_cnt_5_cbks
-,NVL(advice.excptn_cnt_5_refunds, 0)            AS  excptn_cnt_5_refunds
-,NVL(advice.excptn_amnt_5_cbks, 0)              AS  excptn_amnt_5_cbks
-,NVL(advice.excptn_amnt_5_refunds, 0)           AS  excptn_amnt_5_refunds
-,NVL(advice.excptn_cnt_6_cbks, 0)               AS  excptn_cnt_6_cbks
-,NVL(advice.excptn_cnt_6_refunds, 0)            AS  excptn_cnt_6_refunds
-,NVL(advice.excptn_amnt_6_cbks, 0)              AS  excptn_amnt_6_cbks
-,NVL(advice.excptn_amnt_6_refunds, 0)           AS  excptn_amnt_6_refunds
-,NVL(advice.excptn_cnt_7_cbks, 0)               AS  excptn_cnt_7_cbks
-,NVL(advice.excptn_cnt_7_refunds, 0)            AS  excptn_cnt_7_refunds
-,NVL(advice.excptn_amnt_7_cbks, 0)              AS  excptn_amnt_7_cbks
-,NVL(advice.excptn_amnt_7_refunds, 0)           AS  excptn_amnt_7_refunds
-,NVL(advice.excptn_cnt_8_cbks, 0)               AS  excptn_cnt_8_cbks
-,NVL(advice.excptn_cnt_8_refunds, 0)            AS  excptn_cnt_8_refunds
-,NVL(advice.excptn_amnt_8_cbks, 0)              AS  excptn_amnt_8_cbks
-,NVL(advice.excptn_amnt_8_refunds, 0)           AS  excptn_amnt_8_refunds
-,NVL(advice.excptn_cnt_9_cbks, 0)               AS  excptn_cnt_9_cbks
-,NVL(advice.excptn_cnt_9_refunds, 0)            AS  excptn_cnt_9_refunds
-,NVL(advice.excptn_amnt_9_cbks, 0)              AS  excptn_amnt_9_cbks
-,NVL(advice.excptn_amnt_9_refunds, 0)           AS  excptn_amnt_9_refunds
-,NVL(advice.excptn_cnt_10_cbks, 0)              AS  excptn_cnt_10_cbks
-,NVL(advice.excptn_cnt_10_refunds, 0)           AS  excptn_cnt_10_refunds
-,NVL(advice.excptn_amnt_10_cbks, 0)             AS  excptn_amnt_10_cbks
-,NVL(advice.excptn_amnt_10_refunds, 0)          AS  excptn_amnt_10_refunds
-,NVL(advice.excptn_cnt_11_cbks, 0)              AS  excptn_cnt_11_cbks
-,NVL(advice.excptn_cnt_11_refunds, 0)           AS  excptn_cnt_11_refunds
-,NVL(advice.excptn_amnt_11_cbks, 0)             AS  excptn_amnt_11_cbks
-,NVL(advice.excptn_amnt_11_refunds, 0)          AS  excptn_amnt_11_refunds
-,NVL(advice.excptn_cnt_12_cbks, 0)              AS  excptn_cnt_12_cbks
-,NVL(advice.excptn_cnt_12_refunds, 0)           AS  excptn_cnt_12_refunds
-,NVL(advice.excptn_amnt_12_cbks, 0)             AS  excptn_amnt_12_cbks
-,NVL(advice.excptn_amnt_12_refunds, 0)          AS  excptn_amnt_12_refunds
-,NVL(advice.excptn_cnt_13_cbks, 0)              AS  excptn_cnt_13_cbks
-,NVL(advice.excptn_cnt_13_refunds, 0)           AS  excptn_cnt_13_refunds
-,NVL(advice.excptn_amnt_13_cbks, 0)             AS  excptn_amnt_13_cbks
-,NVL(advice.excptn_amnt_13_refunds, 0)          AS  excptn_amnt_13_refunds
-,NVL(advice.excptn_cnt_14_cbks, 0)              AS  excptn_cnt_14_cbks
-,NVL(advice.excptn_cnt_14_refunds, 0)           AS  excptn_cnt_14_refunds
-,NVL(advice.excptn_amnt_14_cbks, 0)             AS  excptn_amnt_14_cbks
-,NVL(advice.excptn_amnt_14_refunds, 0)          AS  excptn_amnt_14_refunds
-,NVL(advice.excptn_cnt_15_cbks, 0)              AS  excptn_cnt_15_cbks
-,NVL(advice.excptn_cnt_15_refunds, 0)           AS  excptn_cnt_15_refunds
-,NVL(advice.excptn_amnt_15_cbks, 0)             AS  excptn_amnt_15_cbks
-,NVL(advice.excptn_amnt_15_refunds, 0)          AS  excptn_amnt_15_refunds
-,NVL(advice.excptn_cnt_16_cbks, 0)              AS  excptn_cnt_16_cbks
-,NVL(advice.excptn_cnt_16_refunds, 0)           AS  excptn_cnt_16_refunds
-,NVL(advice.excptn_amnt_16_cbks, 0)             AS  excptn_amnt_16_cbks
-,NVL(advice.excptn_amnt_16_refunds, 0)          AS  excptn_amnt_16_refunds
-,NVL(advice.excptn_cnt_17_cbks, 0)              AS  excptn_cnt_17_cbks
-,NVL(advice.excptn_cnt_17_refunds, 0)           AS  excptn_cnt_17_refunds
-,NVL(advice.excptn_amnt_17_cbks, 0)             AS  excptn_amnt_17_cbks
-,NVL(advice.excptn_amnt_17_refunds, 0)          AS  excptn_amnt_17_refunds
-,NVL(advice.excptn_cnt_18_cbks, 0)              AS  excptn_cnt_18_cbks
-,NVL(advice.excptn_cnt_18_refunds, 0)           AS  excptn_cnt_18_refunds
-,NVL(advice.excptn_amnt_18_cbks, 0)             AS  excptn_amnt_18_cbks
-,NVL(advice.excptn_amnt_18_refunds, 0)          AS  excptn_amnt_18_refunds
-,NVL(advice.excptn_cnt_19_cbks, 0)              AS  excptn_cnt_19_cbks
-,NVL(advice.excptn_cnt_19_refunds, 0)           AS  excptn_cnt_19_refunds
-,NVL(advice.excptn_amnt_19_cbks, 0)             AS  excptn_amnt_19_cbks
-,NVL(advice.excptn_amnt_19_refunds, 0)          AS  excptn_amnt_19_refunds
-,NVL(advice.excptn_cnt_20_cbks, 0)              AS  excptn_cnt_20_cbks
-,NVL(advice.excptn_cnt_20_refunds, 0)           AS  excptn_cnt_20_refunds
-,NVL(advice.excptn_amnt_20_cbks, 0)             AS  excptn_amnt_20_cbks
-,NVL(advice.excptn_amnt_20_refunds, 0)          AS  excptn_amnt_20_refunds
-,NVL(advice.excptn_cnt_21_cbks, 0)              AS  excptn_cnt_21_cbks
-,NVL(advice.excptn_cnt_21_refunds, 0)           AS  excptn_cnt_21_refunds
-,NVL(advice.excptn_amnt_21_cbks, 0)             AS  excptn_amnt_21_cbks
-,NVL(advice.excptn_amnt_21_refunds, 0)          AS  excptn_amnt_21_refunds
-,NVL(advice.excptn_cnt_above_21_cbks, 0)        AS  excptn_cnt_above_21_cbks
-,NVL(advice.excptn_cnt_above_21_refunds, 0)     AS  excptn_cnt_above_21_refunds
-,NVL(advice.excptn_amnt_above_21_cbks, 0)       AS  excptn_amnt_above_21_cbks
-,NVL(advice.excptn_amnt_above_21_refunds, 0)    AS  excptn_amnt_above_21_refunds
+,'"""+to_ext_month_ts+"""'   AS reporting_month_day
+,CAST( NVL(dep.vol_deposit_count, 0) AS BIGINT)                  AS  vol_deposit_count
+,CAST( NVL(dep.excptn_refund_count, 0) AS BIGINT)                AS  excptn_refund_count
+,CAST( NVL(dep.vol_deposit_settlement_amount, 0) AS DECIMAL(38,18))       AS  vol_deposit_settlement_amount
+,CAST( NVL(dep.excptn_refund_settlement_amount, 0) AS DECIMAL(38,18))     AS  excptn_refund_settlement_amount
+,CAST( NVL(cbk.excptn_cbks_count, 0) AS BIGINT)                           AS  excptn_cbks_count
+,CAST( NVL(cbk.excptn_cbks_amount, 0) AS DECIMAL(38,18))                  AS  excptn_cbks_amount
+,CAST( NVL(cbk.excptn_fraud_cbks_count, 0) AS BIGINT)                     AS  excptn_fraud_cbks_count
+,CAST( NVL(cbk.excptn_fraud_cbks_amount, 0) AS DECIMAL(38,18))            AS  excptn_fraud_cbks_amount
+,CAST( NVL(match1.excptn_refund_mtch_count, 0)  AS BIGINT)      AS  excptn_refund_mtch_count
+,CAST( NVL(match1.excptn_refund_mtch_amount, 0) AS DECIMAL(38,18))        AS  excptn_refund_mtch_amount
+,CAST( NVL(match1.excptn_refund_mtch_count_mtchd, 0) AS BIGINT)  AS  excptn_refund_mtch_count_mtchd
+,CAST( NVL(match1.excptn_refund_mtch_amount_mtchd, 0) AS DECIMAL(38,18))  AS  excptn_refund_mtch_amount_mtchd
+,CAST( NVL(advice.cnt_all_total, 0) AS BIGINT)                  AS  cnt_all_total
+,CAST( NVL(advice.cnt_all_cbks, 0)  AS BIGINT)                  AS  cnt_all_cbks
+,CAST( NVL(advice.cnt_all_frd_cbks, 0) AS BIGINT)                AS  cnt_all_frd_cbks
+,CAST( NVL(advice.amnt_all_total, 0)    AS DECIMAL(38,18))              AS  amnt_all_total
+,CAST( NVL(advice.amnt_all_cbks, 0)     AS DECIMAL(38,18))              AS  amnt_all_cbks
+,CAST( NVL(advice.amnt_all_frd_cbks, 0) AS DECIMAL(38,18))              AS  amnt_all_frd_cbks
+,CAST( NVL(advice.cnt_cbk_prior_total, 0)     AS BIGINT)             AS  cnt_cbk_prior_total
+,CAST( NVL(advice.cnt_cbk_prior_cbks, 0)      AS BIGINT)             AS  cnt_cbk_prior_cbks
+,CAST( NVL(advice.cnt_cbk_prior_frd_cbks, 0)  AS BIGINT)        AS  cnt_cbk_prior_frd_cbks
+,CAST( NVL(advice.amnt_cbk_prior_total, 0)    AS DECIMAL(38,18))        AS  amnt_cbk_prior_total
+,CAST( NVL(advice.amnt_cbk_prior_cbks, 0)     AS DECIMAL(38,18))        AS  amnt_cbk_prior_cbks
+,CAST( NVL(advice.amnt_cbk_prior_frd_cbks, 0) AS DECIMAL(38,18))        AS  amnt_cbk_prior_frd_cbks
+,CAST( NVL(advice.cnt_ref_full_prior_total, 0)   AS BIGINT)    AS  cnt_ref_full_prior_total
+,CAST( NVL(advice.cnt_ref_full_prior_cbks, 0)    AS BIGINT)    AS  cnt_ref_full_prior_cbks
+,CAST( NVL(advice.cnt_ref_full_prior_frd_cbks, 0)AS BIGINT)    AS  cnt_ref_full_prior_frd_cbks
+,CAST( NVL(advice.amnt_ref_full_prior_total, 0)    AS DECIMAL(38,18))   AS  amnt_ref_full_prior_total
+,CAST( NVL(advice.amnt_ref_full_prior_cbks, 0)     AS DECIMAL(38,18))   AS  amnt_ref_full_prior_cbks
+,CAST( NVL(advice.amnt_ref_full_prior_frd_cbks, 0) AS DECIMAL(38,18))   AS  amnt_ref_full_prior_frd_cbks
+,CAST( NVL(advice.cnt_ref_full_after_total, 0)     AS BIGINT)   AS  cnt_ref_full_after_total
+,CAST( NVL(advice.cnt_ref_full_after_cbks, 0)      AS BIGINT)   AS  cnt_ref_full_after_cbks
+,CAST( NVL(advice.cnt_ref_full_after_frd_cbks, 0)  AS BIGINT)   AS  cnt_ref_full_after_frd_cbks
+,CAST( NVL(advice.amnt_ref_full_after_total, 0)    AS DECIMAL(38,18))   AS  amnt_ref_full_after_total
+,CAST( NVL(advice.amnt_ref_full_after_cbks, 0)     AS DECIMAL(38,18))   AS  amnt_ref_full_after_cbks
+,CAST( NVL(advice.amnt_ref_full_after_frd_cbks, 0) AS DECIMAL(38,18))   AS  amnt_ref_full_after_frd_cbks
+,CAST( NVL(advice.cnt_not_ref_full_total, 0)   AS BIGINT)      AS  cnt_not_ref_full_total
+,CAST( NVL(advice.cnt_not_ref_full_cbks, 0)    AS BIGINT)      AS  cnt_not_ref_full_cbks
+,CAST( NVL(advice.cnt_not_ref_full_frd_cbks, 0)AS BIGINT)      AS  cnt_not_ref_full_frd_cbks
+,CAST( NVL(advice.amnt_not_ref_full_total, 0)     AS DECIMAL(38,18))    AS  amnt_not_ref_full_total
+,CAST( NVL(advice.amnt_not_ref_full_cbks, 0)      AS DECIMAL(38,18))    AS  amnt_not_ref_full_cbks
+,CAST( NVL(advice.amnt_not_ref_full_frd_cbks, 0)  AS DECIMAL(38,18))    AS  amnt_not_ref_full_frd_cbks
+,CAST( NVL(advice.excptn_cnt_prior_cbks, 0)    AS BIGINT)       AS  excptn_cnt_prior_cbks
+,CAST( NVL(advice.excptn_cnt_prior_refunds, 0) AS BIGINT)       AS  excptn_cnt_prior_refunds
+,CAST( NVL(advice.excptn_amnt_prior_cbks, 0)    AS DECIMAL(38,18))      AS  excptn_amnt_prior_cbks
+,CAST( NVL(advice.excptn_amnt_prior_refunds, 0) AS DECIMAL(38,18))      AS  excptn_amnt_prior_refunds
+,CAST( NVL(advice.excptn_cnt_0_cbks, 0)          AS BIGINT)    AS  excptn_cnt_0_cbks
+,CAST( NVL(advice.excptn_cnt_0_refunds, 0)       AS BIGINT)    AS  excptn_cnt_0_refunds
+,CAST( NVL(advice.excptn_amnt_0_cbks, 0)    AS DECIMAL(38,18))          AS  excptn_amnt_0_cbks
+,CAST( NVL(advice.excptn_amnt_0_refunds, 0) AS DECIMAL(38,18))          AS  excptn_amnt_0_refunds
+,CAST( NVL(advice.excptn_cnt_1_cbks, 0)       AS BIGINT)       AS  excptn_cnt_1_cbks
+,CAST( NVL(advice.excptn_cnt_1_refunds, 0)    AS BIGINT)       AS  excptn_cnt_1_refunds
+,CAST( NVL(advice.excptn_amnt_1_cbks, 0)    AS DECIMAL(38,18))          AS  excptn_amnt_1_cbks
+,CAST( NVL(advice.excptn_amnt_1_refunds, 0) AS DECIMAL(38,18))          AS  excptn_amnt_1_refunds
+,CAST( NVL(advice.excptn_cnt_2_cbks, 0)       AS BIGINT)        AS  excptn_cnt_2_cbks
+,CAST( NVL(advice.excptn_cnt_2_refunds, 0)    AS BIGINT)        AS  excptn_cnt_2_refunds
+,CAST( NVL(advice.excptn_amnt_2_cbks, 0)    AS DECIMAL(38,18))          AS  excptn_amnt_2_cbks
+,CAST( NVL(advice.excptn_amnt_2_refunds, 0) AS DECIMAL(38,18))          AS  excptn_amnt_2_refunds
+,CAST( NVL(advice.excptn_cnt_3_cbks, 0)       AS BIGINT)        AS  excptn_cnt_3_cbks
+,CAST( NVL(advice.excptn_cnt_3_refunds, 0)    AS BIGINT)        AS  excptn_cnt_3_refunds
+,CAST( NVL(advice.excptn_amnt_3_cbks, 0)     AS DECIMAL(38,18))         AS  excptn_amnt_3_cbks
+,CAST( NVL(advice.excptn_amnt_3_refunds, 0)  AS DECIMAL(38,18))         AS  excptn_amnt_3_refunds
+,CAST( NVL(advice.excptn_cnt_4_cbks, 0)       AS BIGINT)        AS  excptn_cnt_4_cbks
+,CAST( NVL(advice.excptn_cnt_4_refunds, 0)    AS BIGINT)        AS  excptn_cnt_4_refunds
+,CAST( NVL(advice.excptn_amnt_4_cbks, 0)      AS DECIMAL(38,18))        AS  excptn_amnt_4_cbks
+,CAST( NVL(advice.excptn_amnt_4_refunds, 0)   AS DECIMAL(38,18))        AS  excptn_amnt_4_refunds
+,CAST( NVL(advice.excptn_cnt_5_cbks, 0)       AS BIGINT)        AS  excptn_cnt_5_cbks
+,CAST( NVL(advice.excptn_cnt_5_refunds, 0)    AS BIGINT)        AS  excptn_cnt_5_refunds
+,CAST( NVL(advice.excptn_amnt_5_cbks, 0)    AS DECIMAL(38,18))          AS  excptn_amnt_5_cbks
+,CAST( NVL(advice.excptn_amnt_5_refunds, 0) AS DECIMAL(38,18))          AS  excptn_amnt_5_refunds
+,CAST( NVL(advice.excptn_cnt_6_cbks, 0)      AS BIGINT)        AS  excptn_cnt_6_cbks
+,CAST( NVL(advice.excptn_cnt_6_refunds, 0)   AS BIGINT)        AS  excptn_cnt_6_refunds
+,CAST( NVL(advice.excptn_amnt_6_cbks, 0)      AS DECIMAL(38,18))        AS  excptn_amnt_6_cbks
+,CAST( NVL(advice.excptn_amnt_6_refunds, 0)   AS DECIMAL(38,18))        AS  excptn_amnt_6_refunds
+,CAST( NVL(advice.excptn_cnt_7_cbks, 0)      AS BIGINT)         AS  excptn_cnt_7_cbks
+,CAST( NVL(advice.excptn_cnt_7_refunds, 0)   AS BIGINT)         AS  excptn_cnt_7_refunds
+,CAST( NVL(advice.excptn_amnt_7_cbks, 0)     AS DECIMAL(38,18))         AS  excptn_amnt_7_cbks
+,CAST( NVL(advice.excptn_amnt_7_refunds, 0)  AS DECIMAL(38,18))         AS  excptn_amnt_7_refunds
+,CAST( NVL(advice.excptn_cnt_8_cbks, 0)     AS BIGINT)         AS  excptn_cnt_8_cbks
+,CAST( NVL(advice.excptn_cnt_8_refunds, 0)  AS BIGINT)         AS  excptn_cnt_8_refunds
+,CAST( NVL(advice.excptn_amnt_8_cbks, 0)     AS DECIMAL(38,18))         AS  excptn_amnt_8_cbks
+,CAST( NVL(advice.excptn_amnt_8_refunds, 0)  AS DECIMAL(38,18))         AS  excptn_amnt_8_refunds
+,CAST( NVL(advice.excptn_cnt_9_cbks, 0)     AS BIGINT)          AS  excptn_cnt_9_cbks
+,CAST( NVL(advice.excptn_cnt_9_refunds, 0)  AS BIGINT)          AS  excptn_cnt_9_refunds
+,CAST( NVL(advice.excptn_amnt_9_cbks, 0)     AS DECIMAL(38,18))         AS  excptn_amnt_9_cbks
+,CAST( NVL(advice.excptn_amnt_9_refunds, 0)  AS DECIMAL(38,18))         AS  excptn_amnt_9_refunds
+,CAST( NVL(advice.excptn_cnt_10_cbks, 0)    AS BIGINT)          AS  excptn_cnt_10_cbks
+,CAST( NVL(advice.excptn_cnt_10_refunds, 0) AS BIGINT)          AS  excptn_cnt_10_refunds
+,CAST( NVL(advice.excptn_amnt_10_cbks, 0)    AS DECIMAL(38,18))         AS  excptn_amnt_10_cbks
+,CAST( NVL(advice.excptn_amnt_10_refunds, 0) AS DECIMAL(38,18))         AS  excptn_amnt_10_refunds
+,CAST( NVL(advice.excptn_cnt_11_cbks, 0)     AS BIGINT)        AS  excptn_cnt_11_cbks
+,CAST( NVL(advice.excptn_cnt_11_refunds, 0)  AS BIGINT)        AS  excptn_cnt_11_refunds
+,CAST( NVL(advice.excptn_amnt_11_cbks, 0)    AS DECIMAL(38,18))         AS  excptn_amnt_11_cbks
+,CAST( NVL(advice.excptn_amnt_11_refunds, 0) AS DECIMAL(38,18))         AS  excptn_amnt_11_refunds
+,CAST( NVL(advice.excptn_cnt_12_cbks, 0)    AS BIGINT)          AS  excptn_cnt_12_cbks
+,CAST( NVL(advice.excptn_cnt_12_refunds, 0) AS BIGINT)          AS  excptn_cnt_12_refunds
+,CAST( NVL(advice.excptn_amnt_12_cbks, 0)    AS DECIMAL(38,18))         AS  excptn_amnt_12_cbks
+,CAST( NVL(advice.excptn_amnt_12_refunds, 0) AS DECIMAL(38,18))         AS  excptn_amnt_12_refunds
+,CAST( NVL(advice.excptn_cnt_13_cbks, 0)    AS BIGINT)          AS  excptn_cnt_13_cbks
+,CAST( NVL(advice.excptn_cnt_13_refunds, 0) AS BIGINT)          AS  excptn_cnt_13_refunds
+,CAST( NVL(advice.excptn_amnt_13_cbks, 0)    AS DECIMAL(38,18))         AS  excptn_amnt_13_cbks
+,CAST( NVL(advice.excptn_amnt_13_refunds, 0) AS DECIMAL(38,18))         AS  excptn_amnt_13_refunds
+,CAST( NVL(advice.excptn_cnt_14_cbks, 0)       AS BIGINT)       AS  excptn_cnt_14_cbks
+,CAST( NVL(advice.excptn_cnt_14_refunds, 0)    AS BIGINT)       AS  excptn_cnt_14_refunds
+,CAST( NVL(advice.excptn_amnt_14_cbks, 0)     AS DECIMAL(38,18))        AS  excptn_amnt_14_cbks
+,CAST( NVL(advice.excptn_amnt_14_refunds, 0)  AS DECIMAL(38,18))        AS  excptn_amnt_14_refunds
+,CAST( NVL(advice.excptn_cnt_15_cbks, 0)       AS BIGINT)       AS  excptn_cnt_15_cbks
+,CAST( NVL(advice.excptn_cnt_15_refunds, 0)    AS BIGINT)       AS  excptn_cnt_15_refunds
+,CAST( NVL(advice.excptn_amnt_15_cbks, 0)      AS DECIMAL(38,18))       AS  excptn_amnt_15_cbks
+,CAST( NVL(advice.excptn_amnt_15_refunds, 0)   AS DECIMAL(38,18))       AS  excptn_amnt_15_refunds
+,CAST( NVL(advice.excptn_cnt_16_cbks, 0)       AS BIGINT)       AS  excptn_cnt_16_cbks
+,CAST( NVL(advice.excptn_cnt_16_refunds, 0)    AS BIGINT)       AS  excptn_cnt_16_refunds
+,CAST( NVL(advice.excptn_amnt_16_cbks, 0)      AS DECIMAL(38,18))       AS  excptn_amnt_16_cbks
+,CAST( NVL(advice.excptn_amnt_16_refunds, 0)   AS DECIMAL(38,18))       AS  excptn_amnt_16_refunds
+,CAST( NVL(advice.excptn_cnt_17_cbks, 0)       AS BIGINT)       AS  excptn_cnt_17_cbks
+,CAST( NVL(advice.excptn_cnt_17_refunds, 0)    AS BIGINT)       AS  excptn_cnt_17_refunds
+,CAST( NVL(advice.excptn_amnt_17_cbks, 0)      AS DECIMAL(38,18))       AS  excptn_amnt_17_cbks
+,CAST( NVL(advice.excptn_amnt_17_refunds, 0)   AS DECIMAL(38,18))       AS  excptn_amnt_17_refunds
+,CAST( NVL(advice.excptn_cnt_18_cbks, 0)       AS BIGINT)       AS  excptn_cnt_18_cbks
+,CAST( NVL(advice.excptn_cnt_18_refunds, 0)    AS BIGINT)       AS  excptn_cnt_18_refunds
+,CAST( NVL(advice.excptn_amnt_18_cbks, 0)      AS DECIMAL(38,18))       AS  excptn_amnt_18_cbks
+,CAST( NVL(advice.excptn_amnt_18_refunds, 0)   AS DECIMAL(38,18))       AS  excptn_amnt_18_refunds
+,CAST( NVL(advice.excptn_cnt_19_cbks, 0)       AS BIGINT)       AS  excptn_cnt_19_cbks
+,CAST( NVL(advice.excptn_cnt_19_refunds, 0)    AS BIGINT)       AS  excptn_cnt_19_refunds
+,CAST( NVL(advice.excptn_amnt_19_cbks, 0)      AS DECIMAL(38,18))       AS  excptn_amnt_19_cbks
+,CAST( NVL(advice.excptn_amnt_19_refunds, 0)   AS DECIMAL(38,18))       AS  excptn_amnt_19_refunds
+,CAST( NVL(advice.excptn_cnt_20_cbks, 0)       AS BIGINT)       AS  excptn_cnt_20_cbks
+,CAST( NVL(advice.excptn_cnt_20_refunds, 0)    AS BIGINT)       AS  excptn_cnt_20_refunds
+,CAST( NVL(advice.excptn_amnt_20_cbks, 0)      AS DECIMAL(38,18))       AS  excptn_amnt_20_cbks
+,CAST( NVL(advice.excptn_amnt_20_refunds, 0)   AS DECIMAL(38,18))       AS  excptn_amnt_20_refunds
+,CAST( NVL(advice.excptn_cnt_21_cbks, 0)      AS BIGINT)        AS  excptn_cnt_21_cbks
+,CAST( NVL(advice.excptn_cnt_21_refunds, 0)   AS BIGINT)        AS  excptn_cnt_21_refunds
+,CAST( NVL(advice.excptn_amnt_21_cbks, 0)     AS DECIMAL(38,18))       AS  excptn_amnt_21_cbks
+,CAST( NVL(advice.excptn_amnt_21_refunds, 0)  AS DECIMAL(38,18))       AS  excptn_amnt_21_refunds
+,CAST( NVL(advice.excptn_cnt_above_21_cbks, 0)    AS BIGINT)    AS  excptn_cnt_above_21_cbks
+,CAST( NVL(advice.excptn_cnt_above_21_refunds, 0) AS BIGINT)    AS  excptn_cnt_above_21_refunds
+,CAST( NVL(advice.excptn_amnt_above_21_cbks, 0)    AS DECIMAL(38,18))   AS  excptn_amnt_above_21_cbks
+,CAST( NVL(advice.excptn_amnt_above_21_refunds, 0) AS DECIMAL(38,18))   AS  excptn_amnt_above_21_refunds
 from deposit_refund dep
 left join deposit_cbk cbk
        on dep.merchant_id=cbk.merchant_id
@@ -1086,6 +1088,8 @@ left join deposit_fraud_advice_metrics advice
        and dep.method_of_payment_code=advice.method_of_payment_code
        and NVL(dep.settlement_currency_code,'')=NVL(advice.settlement_currency_code,'')""")
 
+      import spark.sqlContext.implicits._
+      df_rpt_fcps_by_mid_monthly.withColumn("reporting_month_day",to_timestamp(col("reporting_month_day"),"yyyy-MM-dd"))
 
       df_rpt_fcps_by_mid_monthly.write.mode("overwrite").parquet(target_path+"reporting_month="+to_ext_month+"/reporting_period="+report_period)
 
