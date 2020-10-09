@@ -2,9 +2,6 @@ package com.fis.ecomm.reporting
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import org.apache.spark.sql.functions._
-
-
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
 
@@ -41,7 +38,7 @@ object rptFcpsByMidMonthly {
       .config("spark.hadoop.validateOutputSpecs", "false")
       .config("spark.debug.maxToStringFields", 100)
       .config("spark.scheduler.mode", "FAIR")
-      .config("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
+     // .config("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
       .enableHiveSupport()
       .getOrCreate()
 
@@ -927,7 +924,7 @@ ON  t1.merchant_id = t2.merchant_id
 
       df_deposit_fraud_advice_metrics.createOrReplaceTempView("deposit_fraud_advice_metrics")
 //,cast('"""+to_ext_month_ts+"""' AS TIMESTAMP)   AS reporting_month_day
-
+//,cast('"""+to_ext_month_ts+"""' AS TIMESTAMP)   AS reporting_month_day
       val df_rpt_fcps_by_mid_monthly=spark.sql("""SELECT dep.MERCHANT_ID
 ,dep.MERCHANT_NAME
 ,dep.ORGANIZATION_ID
@@ -1088,11 +1085,7 @@ left join deposit_fraud_advice_metrics advice
        and dep.method_of_payment_code=advice.method_of_payment_code
        and NVL(dep.settlement_currency_code,'')=NVL(advice.settlement_currency_code,'')""")
 
-      //import spark.sqlContext.implicits._
-      //df_rpt_fcps_by_mid_monthly.withColumn("reporting_month_day",to_timestamp(col("reporting_month_day"),"yyyy-MM-dd"))
-
       df_rpt_fcps_by_mid_monthly.write.mode("overwrite").parquet(target_path+"reporting_month="+to_ext_month+"/reporting_period="+report_period)
-
 
       spark.catalog.dropTempView("tmp_rxp_in_range")
       spark.catalog.dropTempView("tmp_fe_deposit")
