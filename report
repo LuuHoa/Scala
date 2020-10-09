@@ -935,7 +935,7 @@ ON  t1.merchant_id = t2.merchant_id
 ,dep.METHOD_OF_PAYMENT_CODE
 ,dep.SETTLEMENT_CURRENCY_CODE
 ,dep.SETTLEMENT_CURRENCY_DESC
-,'"""+to_ext_month_ts+"""'   AS reporting_month_day
+,cast('"""+to_ext_month_ts+"""' AS TIMESTAMP)   AS reporting_month_day
 ,CAST( NVL(dep.vol_deposit_count, 0) AS BIGINT)                  AS  vol_deposit_count
 ,CAST( NVL(dep.excptn_refund_count, 0) AS BIGINT)                AS  excptn_refund_count
 ,CAST( NVL(dep.vol_deposit_settlement_amount, 0) AS DECIMAL(38,18))       AS  vol_deposit_settlement_amount
@@ -1088,14 +1088,15 @@ left join deposit_fraud_advice_metrics advice
        and dep.method_of_payment_code=advice.method_of_payment_code
        and NVL(dep.settlement_currency_code,'')=NVL(advice.settlement_currency_code,'')""")
 
-      import spark.sqlContext.implicits._
-      df_rpt_fcps_by_mid_monthly.withColumn("reporting_month_day",to_timestamp(col("reporting_month_day"),"yyyy-MM-dd"))
+      //import spark.sqlContext.implicits._
+      //df_rpt_fcps_by_mid_monthly.withColumn("reporting_month_day",to_timestamp(col("reporting_month_day"),"yyyy-MM-dd"))
 
       df_rpt_fcps_by_mid_monthly.write.mode("overwrite").parquet(target_path+"reporting_month="+to_ext_month+"/reporting_period="+report_period)
 
 
       spark.catalog.dropTempView("tmp_rxp_in_range")
       spark.catalog.dropTempView("tmp_fe_deposit")
+      spark.catalog.dropTempView("tmp_fe_deposit_groupby")
       spark.catalog.dropTempView("tmp_fe_refund")
       spark.catalog.dropTempView("deposit_refund")
       spark.catalog.dropTempView("tmp_cbk_cases")
