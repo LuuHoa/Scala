@@ -1,0 +1,81 @@
+drop table if exists dev_audit.vap_to_bda_data_validation;
+create external table dev_audit.vap_to_bda_data_validation(
+  gdg_position bigint,
+  gdg_txoppos bigint,
+  gdg_txind string,
+  gdg_opcode string,
+  gdg_timestamp string,
+  gdg_schema string,
+  gdg_table string,
+  id bigint,
+  table_name string,
+  target_date string,
+  record_count bigint,
+  date_column_name string,  
+  inserted_date string
+)
+partitioned by (
+  extract_date string
+)
+stored as parquet
+location 'hdfs://bda6clu-ns/lake/audit/ecomm_parquet/vap_to_bda_data_validation';
+
+
+
+
+drop table if exists dev_audit.bda_data_counts_validation;
+create external table dev_audit.bda_data_counts_validation(
+  gdg_position bigint,
+  gdg_txoppos bigint,
+  gdg_txind string,
+  gdg_opcode string,
+  gdg_timestamp string,
+  gdg_schema string,
+  gdg_table string,
+  id bigint,
+  table_name string,
+  count_date string,
+  bda_count bigint, 
+  vap_count bigint,
+  matched string,
+  count_diff bigint,
+  date_column_name string,  
+  inserted_date string 
+)
+partitioned by (
+  extract_date string
+)
+stored as parquet
+location 'hdfs://bda6clu-ns/lake/audit/ecomm_parquet/bda_data_counts_validation';
+  
+    
+DROP TABLE IF EXISTS dev_audit.bda_data_validation_conf;
+
+CREATE EXTERNAL TABLE dev_audit.bda_data_validation_conf 
+(
+   schema_name varchar(40),
+   table_id int,
+   table_name varchar(100),
+   table_type varchar(20),
+   count_ind char(1),
+   date_column_name string,
+   failed_rerun char(1),
+   num_days int,           
+   primary_key string,
+   sql string
+   
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\u0007'
+STORED AS TEXTFILE
+LOCATION 
+  'hdfs://bda6clu-ns/lake/audit/ecomm/bda_data_validation_conf';
+  
+set mapreduce.job.queuename = ingestion;
+
+
+INSERT OVERWRITE table dev_audit.bda_data_validation_conf 
+select * from ( 
+SELECT 'AUDIT' schema_name, 1 table_id, 'FE_PAYMENTS' table_name, 'TRAN' table_type, 'Y' count_ind, 'CREATED_DATE' date_column_name, 'Y' failed_rerun, 10 num_days, 'PAYMENT_ID' primary_key, 'SELECT COUNT(DISTINCT PAYMENT_ID ) , TO_DATE(CREATED_DATE) FROM AUDIT.FE_PAYMENTS WHERE to_date(created_date) = {var1} and extract_date between {var1} and date_add({var1},3) group by to_date(created_date)' sql
+UNION ALL
+SELECT 'AUDIT' schema_name, 2 table_id, 'VAP_RESPONSE_REASON_CODE_REF' table_name, 'DIM' table_type, 'Y' count_ind, NULL date_column_name, 'N' failed_rerun, null num_days, 'RESPONSE_REASON_CODE' primary_key, 'SELECT COUNT(DISTINCT RESPONSE_REASON_CODE) , {var1} FROM AUDIT.vap_response_reason_code_ref' sql
+) a
